@@ -1,0 +1,87 @@
+Checks: >
+  clang-analyzer-*,
+  bugprone-*,
+  cert-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  cppcoreguidelines-*,
+  misc-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-no-malloc,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -readability-magic-numbers,
+  -bugprone-suspicious-snprintf,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier,
+  -clang-analyzer-cplusplus*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-security.insecureAPI.strcpy,
+  -clang-analyzer-security.insecureAPI.UncheckedReturn,
+  -misc-include-cleaner,
+  -modernize-*,
+  -hicpp-*,
+  -cert-dcl03-c,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(include/|src/).*'
+FormatStyle: file
+
+CheckOptions:
+  # Bracing and structure
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: 1
+  
+  # Function complexity - A2 threshold (more complex than A3)
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 40
+  
+  # Identifier length - Allow single-letter names for A2 only
+  # Students implemented A1 API with short parameter names (x, y, p, r, t, etc.)
+  # A3 will require refactoring to meaningful names as part of learning objectives
+  - key: readability-identifier-length.MinimumVariableNameLength
+    value: 1
+  - key: readability-identifier-length.MinimumParameterNameLength
+    value: 1
+  - key: readability-identifier-length.MinimumLoopCounterNameLength
+    value: 1
+  
+  # Naming conventions - enforce snake_case
+  # Allow underscore prefix for static (private) functions (common C idiom)
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.FunctionPrefix
+    value: ''
+  - key: readability-identifier-naming.FunctionIgnoredRegexp
+    value: '^_[a-z_]+'
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  
+  # Other checks
+  - key: bugprone-suspicious-memset-usage.WarnOnSuspiciousDestination
+    value: true
+  - key: readability-function-size.LineThreshold
+    value: 150
+  - key: readability-function-size.StatementThreshold
+    value: 100

@@ -1,0 +1,32 @@
+stages:   
+  - trigger
+
+
+variables:
+  GITLAB_HOST: gitlab.socs.uoguelph.ca
+  GRADER_PROJECT_ID: "48650"    
+  GRADER_REF: "main"             
+  ASSIGNMENT: "A3"
+                     
+  STUDENT_ID: "rajvansh"   # ensure your username is correct on this line and the next
+  STUDENT_REPO: "rajvansh/A3"  # 
+  STUDENT_BRANCH: "main"
+
+trigger_grader:
+  stage: trigger
+  image: curlimages/curl:8.10.1
+  only:
+    refs:
+      - main
+  script:
+    - |
+      curl --fail -X POST \
+        "https://${GITLAB_HOST}/api/v4/projects/${GRADER_PROJECT_ID}/trigger/pipeline" \
+        --data "token=${A3_TRIGGER_TOKEN}" \
+        --data "ref=${GRADER_REF}" \
+        --data-urlencode "variables[STUDENT_ID]=${STUDENT_ID}" \
+        --data-urlencode "variables[STUDENT_REPO]=${STUDENT_REPO}" \
+        --data-urlencode "variables[STUDENT_BRANCH]=${STUDENT_BRANCH}" \
+        --data-urlencode "variables[ASSIGNMENT]=${ASSIGNMENT}" \
+        --data-urlencode "variables[STUDENT_SHA]=${CI_COMMIT_SHA}"
+

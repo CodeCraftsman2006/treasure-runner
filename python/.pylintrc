@@ -1,0 +1,50 @@
+# .pylintrc — Style and linting configuration for CIS*2750 A2 Python code
+
+[MASTER]
+# Prevent scanning build, dist, or test directories.
+ignore-patterns=__pycache__,dist,build
+ignore-paths=tests,instructor_tests
+# Limit linting to code packages (rogue and related)
+init-hook='import sys, os; sys.path.append(os.path.abspath("python"))'
+jobs=0
+persistent=no
+extension-pkg-whitelist=ctypes
+
+[MESSAGES CONTROL]
+disable=
+    C0114,  # missing-module-docstring
+    C0115,  # missing-class-docstring
+    C0116,  # missing-function-docstring
+    R0903,  # too-few-public-methods
+    R0902,  # too-many-instance-attributes
+    R0913,  # too-many-arguments (keep lenient for student code)
+    W0703,  # broad-except (common in wrapper code)
+    W1203,  # logging-fstring-interpolation
+    C0301,  # line-too-long (flexible for student code)
+    W0611,  # unused-import (protects API design)
+    W0614,  # unused-wildcard-import
+    W0401,  # wildcard-import
+    E1101,  # no-member (false positives with ctypes dynamic attributes)
+
+[FORMAT]
+max-line-length=100
+indent-string='    '
+
+[BASIC]
+good-names=i,j,k,x,y,dx,dy,id,UI
+
+[TYPECHECK]
+# Tell pylint about dynamically generated members in ctypes
+generated-members=ctypes.*
+
+[DESIGN]
+max-args=5            # functions with >5 args usually need refactoring
+max-locals=10         # keeps functions focused and testable
+max-returns=5         # encourages a single clear return path
+max-branches=8        # discourages deeply nested logic
+max-statements=40     # roughly one screen of code
+min-public-methods=0  # fine for small helper classes
+
+[REPORTS]
+output-format=text
+score=no

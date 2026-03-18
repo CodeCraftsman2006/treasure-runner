@@ -1,0 +1,15 @@
+[run]
+omit =
+    /usr/*
+    */dist-packages/*
+    */site-packages/*
+    */__init__.py
+    */tests/*
+    */instructor_tests/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+show_missing = True
+precision = 0
