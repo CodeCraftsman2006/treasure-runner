@@ -8,6 +8,10 @@
 #include <string.h>
 #include <stdio.h>
 
+/* forward declarations for extended feature functions */
+int room_get_total_treasure_count(const Room *r);
+int room_get_uncollected_count(const Room *r);
+
 //Internal helper to get the current room the player is in
 
 static Room *get_player_room(const GameEngine *eng) {
@@ -251,135 +255,108 @@ void game_engine_free_string(void *ptr) {
     free(ptr);
 }
 
-static Status calc_new_pos(Direction dir, int cx, int cy, int *nx, int *ny) {
-    *nx = cx;
-    *ny = cy;
-    if (dir == DIR_NORTH) {
-        *ny = cy - 1;
-    } else if (dir == DIR_WEST) {
-        *nx = cx - 1;
-    } else if (dir == DIR_SOUTH) {
-        *ny = cy + 1;
-    } else if (dir == DIR_EAST) {
-        *nx = cx + 1;
-    } else {
-        return INVALID_ARGUMENT;
-    }
-    return OK;
-}
-
-static Status handle_pushable(Room *r, int new_x, int new_y, Direction dir,
-                               int pushable_idx) {
-    int push_x = new_x;
-    int push_y = new_y;
-    if (dir == DIR_NORTH) {
-        push_y--;
-    } else if (dir == DIR_WEST) {
-        push_x--;
-    } else if (dir == DIR_SOUTH) {
-        push_y++;
-    } else if (dir == DIR_EAST) {
-        push_x++;
-    }
-    if (room_get_treasure_at(r, push_x, push_y) != -1) {
-        return ROOM_IMPASSABLE;
-    }
-    if (room_get_portal_destination(r, push_x, push_y) != -1) {
-        return ROOM_IMPASSABLE;
-    }
-    if (room_try_push(r, pushable_idx, dir) != OK) {
-        return ROOM_IMPASSABLE;
-    }
-    return OK;
-}
-
-static Status handle_portal(GameEngine *eng, Room *r, int new_x, int new_y) {
-    int dest = room_get_portal_destination(r, new_x, new_y);
-    if (dest == -1) {
-        return OK;
-    }
-    Room key;
-    key.id = dest;
-    Room *target_r = (Room *)graph_get_payload(eng->graph, &key);
-    if (target_r == NULL) {
-        return GE_NO_SUCH_ROOM;
-    }
-    if (player_move_to_room(eng->player, dest) != OK) {
-        return INTERNAL_ERROR;
-    }
-    int target_x = 0;
-    int target_y = 0;
-    if (room_get_start_position(target_r, &target_x, &target_y) != OK) {
-        return INTERNAL_ERROR;
-    }
-    if (player_set_position(eng->player, target_x, target_y) != OK) {
-        return INTERNAL_ERROR;
-    }
-    int tid = room_get_treasure_at(target_r, target_x, target_y);
-    if (tid != -1) {
-        Treasure *t = NULL;
-        if (room_pick_up_treasure(target_r, tid, &t) == OK && t != NULL) {
-            t->collected = false;
-            player_try_collect(eng->player, t);
-        }
-    }
-    return OK;
-}
-
+// Update game_engine_move_player - handle treasures and pushables:
 Status game_engine_move_player(GameEngine *eng, Direction dir) {
-    if (eng == NULL || eng->player == NULL) {
-        return INVALID_ARGUMENT;
-    }
-    Room *r = get_player_room(eng);
-    if (r == NULL) {
-        return INTERNAL_ERROR;
-    }
-    int cx = 0;
-    int cy = 0;
-    if (player_get_position(eng->player, &cx, &cy) != OK) {
-        return INTERNAL_ERROR;
-    }
-    int new_x = 0;
-    int new_y = 0;
-    if (calc_new_pos(dir, cx, cy, &new_x, &new_y) != OK) {
+    if (!eng || !eng->player) {
         return INVALID_ARGUMENT;
     }
 
-    int treasure_id = room_get_treasure_at(r, new_x, new_y);
-    if (treasure_id != -1) {
-        Treasure *t = NULL;
-        if (room_pick_up_treasure(r, treasure_id, &t) == OK && t != NULL) {
-            t->collected = false;
-            player_try_collect(eng->player, t);
-        }
-        return OK;
+    Room *current = get_player_room(eng);
+    if (!current) {
+        return INTERNAL_ERROR;
     }
 
-    int pushable_idx = -1;
-    if (room_has_pushable_at(r, new_x, new_y, &pushable_idx)) {
-        Status ps = handle_pushable(r, new_x, new_y, dir, pushable_idx);
-        if (ps != OK) {
-            return ps;
-        }
+    int x = 0;
+    int y = 0;
+    Status s = player_get_position(eng->player, &x, &y);
+    if (s != OK) {
+        return s;
     }
 
-    if (!room_is_walkable(r, new_x, new_y)) {
+    // Calculate new position
+    int new_x = x;
+    int new_y = y;
+    switch(dir) {
+        case DIR_NORTH: new_y -= 1; break;
+        case DIR_SOUTH: new_y += 1; break;
+        case DIR_WEST:  new_x -= 1; break;
+        case DIR_EAST:  new_x += 1; break;
+        default: return INVALID_ARGUMENT;
+    }
+
+    // Bounds check
+    if (new_x < 0 || new_x >= current->width ||
+        new_y < 0 || new_y >= current->height) {
         return ROOM_IMPASSABLE;
     }
 
-    int dest = room_get_portal_destination(r, new_x, new_y);
-    if (dest != -1) {
-        return handle_portal(eng, r, new_x, new_y);
+    // NEW FOR A2: Classify tile
+    int tile_id = 0;
+    RoomTileType tile = room_classify_tile(current, new_x, new_y, &tile_id);
+
+    switch (tile) {
+        case ROOM_TILE_WALL:
+            return ROOM_IMPASSABLE;
+            
+        case ROOM_TILE_PUSHABLE:
+            // Try to push
+            s = room_try_push(current, tile_id, dir);
+            if (s != OK) {
+                return s;  // Push failed
+            }
+            // Push succeeded, move player
+            break;
+            
+        case ROOM_TILE_TREASURE:
+            // Collect treasure
+            {
+                Treasure *treasure = NULL;
+                s = room_pick_up_treasure(current, tile_id, &treasure);
+                if (s == OK && treasure) {
+                    player_try_collect(eng->player, treasure);
+                }
+            }
+            break;
+            
+        case ROOM_TILE_PORTAL:
+            {
+                int target_id = room_get_portal_destination(current, new_x, new_y);
+                if (target_id < 0) {
+                    return ROOM_IMPASSABLE;
+                }
+                Room *target = (Room *)graph_get_payload(eng->graph, &target_id);
+                if (!target) {
+                    return GE_NO_SUCH_ROOM;
+                }
+                int entry_x = 0;
+                int entry_y = 0;
+                s = room_get_start_position(target, &entry_x, &entry_y);
+                if (s != OK) {
+                    return s;
+                }
+                s = player_move_to_room(eng->player, target_id);
+                if (s != OK) {
+                    return s;
+                }
+                return player_set_position(eng->player, entry_x, entry_y);
+            }
+            
+        case ROOM_TILE_FLOOR:
+        case ROOM_TILE_INVALID:
+        default:
+            break;
     }
 
     return player_set_position(eng->player, new_x, new_y);
 }
 
+// Update game_engine_reset - reset pushables and treasures:
 Status game_engine_reset(GameEngine *eng) {
     if (!eng || !eng->player) {
         return INVALID_ARGUMENT;
     }
 
+    // Reset player
     Status s = player_reset_to_start(eng->player,
                                      eng->initial_room_id,
                                      eng->initial_player_x,
@@ -388,15 +365,20 @@ Status game_engine_reset(GameEngine *eng) {
         return s;
     }
 
+    // NEW FOR A2: Reset all rooms' pushables and treasures
     const void * const *payloads = NULL;
     int count = 0;
     if (graph_get_all_payloads(eng->graph, &payloads, &count) == GRAPH_STATUS_OK) {
         for (int i = 0; i < count; i++) {
             Room *r = (Room *)payloads[i];
+            
+            // Reset pushables to initial positions
             for (int j = 0; j < r->pushable_count; j++) {
                 r->pushables[j].x = r->pushables[j].initial_x;
                 r->pushables[j].y = r->pushables[j].initial_y;
             }
+            
+            // Reset treasures
             for (int j = 0; j < r->treasure_count; j++) {
                 r->treasures[j].x = r->treasures[j].initial_x;
                 r->treasures[j].y = r->treasures[j].initial_y;
@@ -404,5 +386,48 @@ Status game_engine_reset(GameEngine *eng) {
             }
         }
     }
+
+    return OK;
+}
+
+/* ── EXTENDED: COLLECT ALL TREASURE ─────────────────────── */
+
+/* Total treasure count across ALL rooms */
+Status game_engine_get_total_treasure_count(const GameEngine *eng, int *count_out) {
+    if (!eng) { return INVALID_ARGUMENT; }
+    if (!count_out) { return NULL_POINTER; }
+
+    const void * const *payloads = NULL;
+    int room_count = 0;
+    if (graph_get_all_payloads(eng->graph, &payloads, &room_count) != GRAPH_STATUS_OK) {
+        return INTERNAL_ERROR;
+    }
+
+    int total = 0;
+    for (int i = 0; i < room_count; i++) {
+        total += room_get_total_treasure_count((Room *)payloads[i]);
+    }
+    *count_out = total;
+    return OK;
+}
+
+/* Returns 1 if the player has collected every treasure in the world, 0 otherwise */
+Status game_engine_is_victory(const GameEngine *eng, int *result_out) {
+    if (!eng) { return INVALID_ARGUMENT; }
+    if (!result_out) { return NULL_POINTER; }
+
+    const void * const *payloads = NULL;
+    int room_count = 0;
+    if (graph_get_all_payloads(eng->graph, &payloads, &room_count) != GRAPH_STATUS_OK) {
+        return INTERNAL_ERROR;
+    }
+
+    for (int i = 0; i < room_count; i++) {
+        if (room_get_uncollected_count((Room *)payloads[i]) > 0) {
+            *result_out = 0;
+            return OK;
+        }
+    }
+    *result_out = 1;
     return OK;
 }

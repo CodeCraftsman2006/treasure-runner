@@ -26,7 +26,7 @@ KEY_MAP = {
     curses.KEY_DOWN:  Direction.SOUTH,
     ord('s'):         Direction.SOUTH,
     ord('S'):         Direction.SOUTH,
-    curses.KEY_RIGHT: Direction.EAS   # looks like typo but assuming its fine
+    curses.KEY_RIGHT: Direction.EAST,
     ord('d'):         Direction.EAST,
     ord('D'):         Direction.EAST,
     curses.KEY_LEFT:  Direction.WEST,
@@ -43,24 +43,27 @@ class TerminalTooSmallError(Exception):
 
 
 class GameUI:
+    """Curses view for Treasure Run."""
 
     def __init__(self, engine, profile: dict, profile_path: str):
         # engine handles game logic, UI just calls it
         self._engine = engine
-        self._profile = profile  # player stats
+        self._profile = profile          # player stats
         self._profile_path = profile_path  # where we save profile
         self._message = "Welcome! Use arrows or WASD to move."
-        self._steps = 0  # count number of moves
+        self._steps = 0       # count number of moves
+        self._stdscr = None   # set properly in _main each run
 
     # start the UI using curses
     def run(self) -> None:
+        """Launch the curses wrapper and start the game."""
         curses.wrapper(self._main)
 
     # main curses function (everything runs from here)
     def _main(self, stdscr) -> None:
-        self._stdscr = stdscr
-        curses.curs_set(0)  # hide cursor
-        stdscr.keypad(True)  # allow arrow keys
+        self._stdscr = stdscr  # update reference each run
+        curses.curs_set(0)     # hide cursor
+        stdscr.keypad(True)    # allow arrow keys
 
         self._check_terminal_size()
         self._show_splash(stdscr)
@@ -127,12 +130,14 @@ class GameUI:
             self._engine.move_player(direction)
             self._steps += 1
             after = self._engine.player.get_collected_count()
-
-            # check if treasure collected
+            #check if treasure collected
             if after > before:
                 delta = after - before
                 noun = "treasure" if delta == 1 else "treasures"
                 self._message = f"You picked up {delta} {noun}!"
+                # check victory after every collection
+                if self._engine.is_victory():
+                    self._show_victory(self._stdscr)
             else:
                 self._message = ""
         except ImpassableError:
@@ -160,60 +165,61 @@ class GameUI:
     def _draw_screen(self, stdscr) -> None:
         stdscr.clear()
         rows, cols = stdscr.getmaxyx()
+        room_id = self._engine.player.get_room()
+        room_count = self._engine.get_room_count()
 
         # message bar (top)
         self._safe_addstr(stdscr, 0, 0, (self._message or "")[:cols - 1])
 
         # room info
-        room_id = self._engine.player.get_room()
-        room_count = self._engine.get_room_count()
-        self._safe_addstr(
-            stdscr, 1, 0,
-            f"Room {room_id}  |  {room_count} rooms in world"[:cols - 1]
-        )
+        self._safe_addstr(stdscr, 1, 0,
+            f"Room {room_id}  |  {room_count} rooms in world"[:cols - 1])
 
-        # draw map/grid
+        # draw map/grid, legend, and status bar
+        self._draw_grid(stdscr, rows, cols)
+        self._draw_legend(stdscr, cols)
+        self._draw_statusbar(stdscr, rows, cols, room_id, room_count)
+
+        stdscr.refresh()
+
+    # draw the room grid
+    def _draw_grid(self, stdscr, rows: int, cols: int) -> None:
         room_str = self._engine.render_current_room()
-        room_lines = room_str.split("\n")
-        grid_rows_available = rows - 5
-        for i, line in enumerate(room_lines):
-            if i >= grid_rows_available:
+        for i, line in enumerate(room_str.split("\n")):
+            if i >= rows - 5:
                 break
             self._safe_addstr(stdscr, 2 + i, 0, line[:cols - 1])
 
-        # legend on right side if enough space
+    def _draw_legend(self, stdscr, cols: int) -> None:
         legend_col = 50
-        if cols > legend_col + 22:
-            self._safe_addstr(stdscr, 2, legend_col, "Game Elements:")
-            self._safe_addstr(stdscr, 3, legend_col, "@ - player")
-            self._safe_addstr(stdscr, 4, legend_col, "# - wall")
-            self._safe_addstr(stdscr, 5, legend_col, "$ - gold")
-            self._safe_addstr(stdscr, 6, legend_col, "x - exit/portal")
+        if cols <= legend_col + 22:
+            return
+        self._safe_addstr(stdscr, 2, legend_col, "Game Elements:")
+        self._safe_addstr(stdscr, 3, legend_col, "@ - player")
+        self._safe_addstr(stdscr, 4, legend_col, "# - wall")
+        self._safe_addstr(stdscr, 5, legend_col, "$ - gold")
+        self._safe_addstr(stdscr, 6, legend_col, "x - open portal")
+        self._safe_addstr(stdscr, 7, legend_col, "+ - locked portal")  # NEW
+        self._safe_addstr(stdscr, 8, legend_col, "^ - switch plate")   # NEW
 
+    def _draw_statusbar(self, stdscr, rows: int, cols: int,
+                    room_id: int, room_count: int) -> None:
         # controls info
-        self._safe_addstr(
-            stdscr, rows - 3, 0,
-            f"Game Controls: {CONTROLS}"[:cols - 1]
-        )
+        self._safe_addstr(stdscr, rows - 3, 0,
+            f"Game Controls: {CONTROLS}"[:cols - 1])
 
-        # player status bar
+        # player status bar with treasure progress
         collected = self._engine.player.get_collected_count()
+        total = self._engine.get_total_treasure_count()  # NEW
         name = self._profile.get("player_name", "Player")
-        status = (
-            f"{name}  |  Gold: {collected}  |  "
-            f"Steps: {self._steps}  |  Room: {room_id}/{room_count}"
-        )
+        status = (f"{name}  |  Gold: {collected}/{total}  |  "
+                f"Steps: {self._steps}  |  Room: {room_id}/{room_count}")
         self._safe_addstr(stdscr, rows - 2, 0, status[:cols - 1])
 
-        # footer
         footer_right = "rajvansh@uoguelph.com"
         self._safe_addstr(stdscr, rows - 1, 0, "Treasure Run")
-        self._safe_addstr(
-            stdscr, rows - 1,
-            max(0, cols - len(footer_right) - 1), footer_right
-        )
-
-        stdscr.refresh()
+        self._safe_addstr(stdscr, rows - 1,
+            max(0, cols - len(footer_right) - 1), footer_right)
 
     # quit / game over screen
     def _show_quit_screen(self, stdscr) -> None:
@@ -242,14 +248,14 @@ class GameUI:
 
     # draw profile info block
     def _draw_profile_block(self, stdscr, start_row: int) -> None:
-        p = self._profile
+        prof = self._profile  # local alias for readability
         _, cols = stdscr.getmaxyx()
         lines = [
-            f"Player             : {p.get('player_name', 'Unknown')}",
-            f"Games played       : {p.get('games_played', 0)}",
-            f"Max treasure       : {p.get('max_treasure_collected', 0)}",
-            f"Rooms completed    : {p.get('most_rooms_world_completed', 0)}",
-            f"Last played        : {p.get('timestamp_last_played', 'never')}",
+            f"Player             : {prof.get('player_name', 'Unknown')}",
+            f"Games played       : {prof.get('games_played', 0)}",
+            f"Max treasure       : {prof.get('max_treasure_collected', 0)}",
+            f"Rooms completed    : {prof.get('most_rooms_world_completed', 0)}",
+            f"Last played        : {prof.get('timestamp_last_played', 'never')}",
         ]
         for i, line in enumerate(lines):
             self._safe_addstr(stdscr, start_row + i, 4, line[:cols - 5])
@@ -273,8 +279,8 @@ class GameUI:
         )
 
         try:
-            with open(self._profile_path, "w", encoding="utf-8") as f:
-                json.dump(self._profile, f, indent=2)
+            with open(self._profile_path, "w", encoding="utf-8") as profile_file:
+                json.dump(self._profile, profile_file, indent=2)
         except OSError:
             pass  # ignore error, not super critical
 
@@ -287,22 +293,51 @@ class GameUI:
             pass
 
 
-# ask user for name if no profile exists
-def prompt_player_name(stdscr) -> str:
-    curses.echo()
-    curses.curs_set(1)
-    rows, cols = stdscr.getmaxyx()
-    stdscr.clear()
+    # ask user for name if no profile exists
+    def prompt_player_name(stdscr) -> str:
+        """Prompt for player name when no profile file exists."""
+        curses.echo()
+        curses.curs_set(1)
+        rows, cols = stdscr.getmaxyx()
+        stdscr.clear()
 
-    msg = "No profile found. Enter your player name:"
-    stdscr.addstr(rows // 2 - 1, max(0, cols // 2 - len(msg) // 2), msg)
-    stdscr.addstr(rows // 2, max(0, cols // 2 - 20), "> ")
-    stdscr.refresh()
+        msg = "No profile found. Enter your player name:"
+        stdscr.addstr(rows // 2 - 1, max(0, cols // 2 - len(msg) // 2), msg)
+        stdscr.addstr(rows // 2, max(0, cols // 2 - 20), "> ")
+        stdscr.refresh()
 
-    name_bytes = stdscr.getstr(rows // 2, max(0, cols // 2 - 18), 40)
+        name_bytes = stdscr.getstr(rows // 2, max(0, cols // 2 - 18), 40)
 
-    curses.noecho()
-    curses.curs_set(0)
+        curses.noecho()
+        curses.curs_set(0)
 
-    # return name or default if empty
-    return name_bytes.decode("utf-8").strip() or "Player"
+        # return name or default if empty
+        return name_bytes.decode("utf-8").strip() or "Player"
+
+
+    #new extension feature
+        # victory screen shown when all treasure is collected
+    def _show_victory(self, stdscr) -> None:
+        self._update_profile()
+        stdscr.clear()
+        rows, cols = stdscr.getmaxyx()
+        mid = cols // 2
+
+        title = "*** YOU WIN! ALL TREASURE COLLECTED! ***"
+        self._safe_addstr(stdscr, 2, mid - len(title) // 2, title)
+
+        self._draw_profile_block(stdscr, start_row=4)
+
+        total = self._engine.get_total_treasure_count()
+        summary = (f"Treasures: {total}/{total}  |  "
+                f"Steps: {self._steps}  |  "
+                f"Room: {self._engine.player.get_room()}")
+        self._safe_addstr(stdscr, 11, 4, summary[:cols - 5])
+
+        prompt = "Press any key to exit..."
+        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt)
+        stdscr.refresh()
+        stdscr.getch()
+
+        # raise to break out of the game loop
+        raise GameEngineError("victory")
