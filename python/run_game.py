@@ -107,7 +107,7 @@ def main() -> None:
     except TerminalTooSmallError as exc:
         # handles case where terminal window is too small for UI
         print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        #sys.exit(1)
     finally:
         # always destroy engine to free resources (important)
         engine.destroy()
