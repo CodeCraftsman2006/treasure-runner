@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+/* forward declarations for extended feature helpers */
+static bool switch_is_activated(const Room *r, int switch_idx);
+bool room_portal_locked(const Room *r, int x, int y);
+bool room_has_switch_at(const Room *r, int x, int y);
+int room_get_uncollected_count(const Room *r);
+int room_get_total_treasure_count(const Room *r);
+
 // Convert 2D coordinates to 1D index in the floor grid
 static int index_1d(const Room *r, int x, int y) {
     return y * r->width + x;
@@ -61,6 +69,11 @@ Status room_set_treasures(Room *r, Treasure *treasures, int treasure_count) {
     }
     free(r->treasures);
 
+    // NULL out name pointers on incoming array - callers may not initialize them
+    for (int i = 0; i < treasure_count; i++) {
+        treasures[i].name = NULL;
+    }
+
     r->treasures = treasures;
     r->treasure_count = treasure_count;
 
@@ -79,6 +92,8 @@ Status room_place_treasure(Room *r, const Treasure *treasure) {
     // Copy the treasure into the new slot
     Treasure *t = &r->treasures[r->treasure_count];
     *t = *treasure;
+    t->name = NULL;        // always reset name before duplicating
+    t->collected = false;  // always start uncollected
 
     // Duplicate name if present
     if (treasure->name) {
@@ -235,14 +250,18 @@ RoomTileType room_classify_tile(const Room *r, int x, int y, int *out_id) {
         return ROOM_TILE_TREASURE;
     }
 
+
     // Check portal
     id = room_get_portal_destination(r, x, y);
     if (id != -1) {
-        if (out_id) {
-            *out_id = id;
+        /* EXTENDED: locked portal acts like a wall */
+        if (room_portal_locked(r, x, y)) {
+            return ROOM_TILE_WALL;
         }
+        if (out_id) { *out_id = id; }
         return ROOM_TILE_PORTAL;
     }
+
 
     if (room_is_walkable(r, x, y)) {
         return ROOM_TILE_FLOOR;
@@ -293,6 +312,25 @@ Status room_render(const Room *r, const Charset *charset, char *buffer, int buff
         int col = r->pushables[i].x;
         int row = r->pushables[i].y;
         buffer[row * r->width + col] = (char)charset->pushable;
+    }
+    /* Overlay switch plates (show ^ when no pushable on top) */
+    for (int i = 0; i < r->switch_count; i++) {
+        int col = r->switches[i].x;
+        int row = r->switches[i].y;
+        if (!room_has_pushable_at(r, col, row, NULL)) {
+            buffer[row * r->width + col] = '^';
+        }
+    }
+
+    /* Overlay portals: + = locked, charset->portal = open */
+    for (int i = 0; i < r->portal_count; i++) {
+        int col = r->portals[i].x;
+        int row = r->portals[i].y;
+        if (room_portal_locked(r, col, row)) {
+            buffer[row * r->width + col] = '+';
+        } else {
+            buffer[row * r->width + col] = (char)charset->portal;
+        }
     }
 
     return OK;
@@ -459,4 +497,59 @@ Status room_try_push(Room *r, int pushable_idx, Direction dir) {
     p->y = new_y;
     
     return OK;
+}
+
+/* ── EXTENDED: LOCKED DOORS ─────────────────────────────── */
+
+/* Returns true if a pushable is currently sitting on switch idx */
+static bool switch_is_activated(const Room *r, int switch_idx) {
+    if (!r || switch_idx < 0 || switch_idx >= r->switch_count) {
+        return false;
+    }
+    int sx = r->switches[switch_idx].x;
+    int sy = r->switches[switch_idx].y;
+    return room_has_pushable_at(r, sx, sy, NULL);
+}
+
+/* Returns true if the portal at (x,y) has a linked switch that is NOT activated */
+bool room_portal_locked(const Room *r, int x, int y) {
+    if (!r) { return false; }
+    for (int i = 0; i < r->portal_count; i++) {
+        if (r->portals[i].x != x || r->portals[i].y != y) { continue; }
+        int pid = r->portals[i].id;
+        for (int j = 0; j < r->switch_count; j++) {
+            if (r->switches[j].portal_id == pid) {
+                return !switch_is_activated(r, j);
+            }
+        }
+    }
+    return false;  /* no linked switch = always open */
+}
+
+/* Returns true if there is a switch tile at (x,y) */
+bool room_has_switch_at(const Room *r, int x, int y) {
+    if (!r) { return false; }
+    for (int i = 0; i < r->switch_count; i++) {
+        if (r->switches[i].x == x && r->switches[i].y == y) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* ── EXTENDED: TOTAL TREASURE COUNT ─────────────────────── */
+
+/* Count all uncollected treasures in this room */
+int room_get_uncollected_count(const Room *r) {
+    if (!r) { return 0; }
+    int count = 0;
+    for (int i = 0; i < r->treasure_count; i++) {
+        if (!r->treasures[i].collected) { count++; }
+    }
+    return count;
+}
+
+/* Count all treasures (collected or not) in this room */
+int room_get_total_treasure_count(const Room *r) {
+    return r ? r->treasure_count : 0;
 }
