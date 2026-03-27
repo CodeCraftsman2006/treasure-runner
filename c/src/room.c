@@ -69,6 +69,11 @@ Status room_set_treasures(Room *r, Treasure *treasures, int treasure_count) {
     }
     free(r->treasures);
 
+    // NULL out name pointers on incoming array - callers may not initialize them
+    for (int i = 0; i < treasure_count; i++) {
+        treasures[i].name = NULL;
+    }
+
     r->treasures = treasures;
     r->treasure_count = treasure_count;
 
@@ -87,6 +92,8 @@ Status room_place_treasure(Room *r, const Treasure *treasure) {
     // Copy the treasure into the new slot
     Treasure *t = &r->treasures[r->treasure_count];
     *t = *treasure;
+    t->name = NULL;        // always reset name before duplicating
+    t->collected = false;  // always start uncollected
 
     // Duplicate name if present
     if (treasure->name) {
