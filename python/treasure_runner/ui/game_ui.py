@@ -178,7 +178,7 @@ class GameUI:
         status = (f"{name}  |  Gold: {collected}  |  "
                   f"Steps: {self._steps}  |  Room: {room_id}/{room_count}")
         self._safe_addstr(stdscr, rows - 2, 0, status[:cols - 1])
-        footer_right = "your@email.com"
+        footer_right = "rajvansh@email.com"
         self._safe_addstr(stdscr, rows - 1, 0, "Treasure Run")
         self._safe_addstr(stdscr, rows - 1,
             max(0, cols - len(footer_right) - 1), footer_right)
