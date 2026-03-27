@@ -106,6 +106,25 @@ class GameUI:
 
         self._total_treasure_count = self._explore_world()
 
+    def _try_move(self, direction: Direction) -> bool:
+        """
+        Attempt one engine move.
+        Returns True if the player entered a new room, False otherwise.
+        Swallows ImpassableError / GameEngineError so callers stay branch-free.
+        """
+        try:
+            self._engine.move_player(direction)
+            return True
+        except (ImpassableError, GameEngineError):
+            return False
+
+    def _reset_engine_safe(self) -> None:
+        """Reset the engine, silently ignoring errors (used during world exploration)."""
+        try:
+            self._engine.reset()
+        except (AttributeError, GameEngineError):
+            pass
+
     def _explore_world(self) -> int:
         """
         Walk every reachable room once to:
@@ -119,7 +138,7 @@ class GameUI:
         try:
             self._engine.reset()
             self._room_ids = self._engine.get_room_ids()
-            room_count = len(self._room_ids)
+            n = len(self._room_ids)
 
             self._adj = {rid: set() for rid in self._room_ids}
             self._room_has_treasure = {rid: False for rid in self._room_ids}
@@ -140,31 +159,26 @@ class GameUI:
             visit_current()
 
             # BFS-style walk until all rooms discovered
-            for _ in range(room_count * 4):
-                if len(visited) == room_count:
+            for _ in range(n * 4):
+                if len(visited) == n:
                     break
                 current = self._engine.player.get_room()
                 for direction in (Direction.NORTH, Direction.SOUTH,
                                   Direction.EAST, Direction.WEST):
-                    try:
-                        self._engine.move_player(direction)
-                        neighbour = self._engine.player.get_room()
-                        if neighbour != current:
-                            # Record bidirectional edge
-                            self._adj[current].add(neighbour)
-                            self._adj[neighbour].add(current)
-                            visit_current()
-                            break   # stay in new room to explore further
-                    except (ImpassableError, GameEngineError):
+                    if not self._try_move(direction):
                         continue
+                    neighbour = self._engine.player.get_room()
+                    if neighbour != current:
+                        # Record bidirectional edge
+                        self._adj[current].add(neighbour)
+                        self._adj[neighbour].add(current)
+                        visit_current()
+                        break   # stay in new room to explore further
 
         except (AttributeError, GameEngineError):
             total_gold = 0
         finally:
-            try:
-                self._engine.reset()
-            except (AttributeError, GameEngineError):
-                pass
+            self._reset_engine_safe()
 
         return total_gold + 1 if total_gold > 0 else 0
 
@@ -222,10 +236,14 @@ class GameUI:
 
 
         #to make the portal color mtch the room walls
+
         curses.init_pair(20, curses.COLOR_BLUE, -1)
         curses.init_pair(21, curses.COLOR_GREEN, -1)
         curses.init_pair(22, curses.COLOR_MAGENTA, -1)
         curses.init_pair(23, curses.COLOR_CYAN, -1)
+
+
+
 
     # -------------------------------
     # Helpers
@@ -284,6 +302,7 @@ class GameUI:
         while True:
             if self._victory:
                 break
+
             self._check_terminal_size()
             self._draw_screen(stdscr)
             key = stdscr.getch()
@@ -366,7 +385,7 @@ class GameUI:
         self._visited_rooms.add(self._engine.player.get_room())
 
         self._draw_header(stdscr, cols)
-        self._draw_grid(stdscr, rows)
+        self._draw_grid(stdscr, rows, cols)
         self._draw_right_panel(stdscr, rows, cols)
         self._draw_statusbar(
             stdscr, rows, cols,
@@ -394,46 +413,8 @@ class GameUI:
             self._color(CP_HEADER),
         )
 
-    def _draw_grid(self, stdscr, rows: int) -> None:
-        """Render the current room with per-character colouring."""
-        grid_max_col = 48
-
-        # needed to be declared before the loop to avoid errors
-        room_str = self._engine.render_current_room()
-        room_id = self._engine.player.get_room()
-        neighbours = list(self._adj.get(room_id, []))
-        portal_index = 0
-        wall_color = 20 + (room_id % 3)
-
-        # pick first connected room colour if exists
-        default_portal_color = (
-            20 + (neighbours[0] % 4) if neighbours else CP_PORTAL
-        )
-
-        for i, line in enumerate(room_str.split("\n")):
-            if i >= rows - 5:
-                break
-            screen_row = 2 + i
-            for j, char in enumerate(line):
-                if j >= grid_max_col - 1:
-                    break
-                attr = self._char_attr(
-                    char, wall_color, default_portal_color,
-                    neighbours, portal_index,
-                )
-                # advance portal_index when a portal glyph is consumed
-                if char in ("X", "x"):
-                    portal_index += 1
-                self._safe_addstr(stdscr, screen_row, j, char, attr)
-
-    def _char_attr(
-        self,
-        char: str,
-        wall_color: int,
-        default_portal_color: int,
-        neighbours: list,
-        portal_index: int,
-    ) -> int:
+    def _char_attr(self, char: str, wall_color: int,
+                   neighbours: list, portal_index: int) -> int:
         """Return the curses attribute for a single room character."""
         if char == "#":
             return self._color(wall_color, bold=True)
@@ -445,51 +426,73 @@ class GameUI:
             if portal_index < len(neighbours):
                 portal_color = 20 + (neighbours[portal_index] % 4)
             else:
-                portal_color = default_portal_color
+                portal_color = CP_PORTAL
             return self._color(portal_color, bold=True)
         return self._color(CP_FLOOR)
+
+    def _draw_grid(self, stdscr, rows: int, cols: int) -> None:
+        """Render the current room with per-character colouring."""
+        grid_max_col = 48
+
+        # Pre-compute room-level values once, outside the character loop
+        room_str = self._engine.render_current_room()
+        room_id = self._engine.player.get_room()
+        neighbours = list(self._adj.get(room_id, []))
+        wall_color = 20 + (room_id % 3)
+        portal_index = 0
+
+        for i, line in enumerate(room_str.split("\n")):
+            if i >= rows - 5:
+                break
+            screen_row = 2 + i
+            for j, char in enumerate(line):
+                if j >= grid_max_col - 1:
+                    break
+                attr = self._char_attr(char, wall_color, neighbours, portal_index)
+                if char in ("X", "x"):
+                    portal_index += 1
+                self._safe_addstr(stdscr, screen_row, j, char, attr)
 
     # ----------------------------------
     # Right panel  (legend + minimap)
     # ---------------------------------------
 
-    PANEL_COL = 50   # left edge of the right panel
+    PANEL_COL     = 50   # left edge of the right panel
+    MAP_ROOMS_PER_ROW = 3
+    MAP_NODE_WIDTH    = 5   # "[NN]" + 1 gap
+    MAP_TOP_ROW       = 14
 
     def _draw_right_panel(self, stdscr, rows: int, cols: int) -> None:
         if cols <= self.PANEL_COL + 22:
             return
         self._draw_legend(stdscr)
-        self._draw_minimap(stdscr)
+        self._draw_minimap(stdscr, cols)
 
-    def _draw_legend(self, stdscr) -> None:
+    def _draw_legend_elements(self, stdscr, start_row: int) -> int:
+        """Draw the tile-type legend entries. Returns the next free row."""
         col = self.PANEL_COL
-        row = 2
-
-        self._safe_addstr(stdscr, row, col, "Game Elements:",
-                          self._color(CP_LEGEND_HD, bold=True))
-        row += 1
+        row = start_row
         room_id = self._engine.player.get_room()
         next_room = (room_id + 1) % 4
 
         entries = [
-            ("@", " player", CP_PLAYER),
+            ("@", " player",                  CP_PLAYER),
             ("#", f" room {room_id + 1} wall", 20 + (room_id % 4)),
-            ("$", " gold", CP_GOLD),
+            ("$", " gold",                    CP_GOLD),
             ("x", f" to room {next_room + 1}", 20 + next_room),
         ]
-
         for symbol, label, pair in entries:
             self._safe_addstr(stdscr, row, col,     symbol,
                               self._color(pair, bold=True))
             self._safe_addstr(stdscr, row, col + 1, label,
                               self._color(CP_FLOOR))
             row += 1
+        return row
 
-        row += 1
-        self._safe_addstr(stdscr, row, col, "Map Key:",
-                          self._color(CP_LEGEND_HD, bold=True))
-        row += 1
-
+    def _draw_legend_map_key(self, stdscr, start_row: int) -> None:
+        """Draw the minimap colour-key entries."""
+        col = self.PANEL_COL
+        row = start_row
         map_key = [
             ("[R]", " you are here",  CP_MAP_CUR),
             ("[R]", " visited",       CP_MAP_VIS),
@@ -502,11 +505,73 @@ class GameUI:
                               label,  self._color(CP_FLOOR))
             row += 1
 
-    def _draw_minimap(self, stdscr) -> None:
+    def _draw_legend(self, stdscr) -> None:
+        col = self.PANEL_COL
+        row = 2
+
+        self._safe_addstr(stdscr, row, col, "Game Elements:",
+                          self._color(CP_LEGEND_HD, bold=True))
+        row = self._draw_legend_elements(stdscr, start_row=row + 1)
+
+        row += 1
+        self._safe_addstr(stdscr, row, col, "Map Key:",
+                          self._color(CP_LEGEND_HD, bold=True))
+        self._draw_legend_map_key(stdscr, start_row=row + 1)
+
+    def _minimap_slot(self, sorted_ids: list) -> dict:
+        """Map each room_id to its (map_row, map_col) display slot."""
+        return {
+            rid: (idx // self.MAP_ROOMS_PER_ROW, idx % self.MAP_ROOMS_PER_ROW)
+            for idx, rid in enumerate(sorted_ids)
+        }
+
+    def _draw_minimap_node(self, stdscr, rid: int, current_room: int,
+                           screen_row: int, screen_col: int) -> str:
+        """Draw a single room node; returns the label string."""
+        label = f"[{rid + 1:1d}]"
+        if rid == current_room:
+            node_attr = self._color(CP_MAP_CUR,   bold=True)
+        elif rid in self._visited_rooms:
+            node_attr = self._color(CP_MAP_VIS,   bold=True)
+        else:
+            node_attr = self._color(CP_MAP_UNVIS, bold=True)
+        self._safe_addstr(stdscr, screen_row, screen_col, label, node_attr)
+
+        # Treasure indicator below node
+        if self._room_has_treasure.get(rid, False):
+            self._safe_addstr(stdscr, screen_row + 1, screen_col + 1, "$",
+                              self._color(CP_GOLD, bold=True))
+        return label
+
+    def _draw_minimap_edges(self, stdscr, rid: int, sorted_ids: list,
+                            slot: dict, map_row: int, map_col: int,
+                            screen_row: int, screen_col: int, label: str) -> None:
+        """Draw horizontal and vertical edges for one minimap node."""
+        num_rooms = len(sorted_ids)
+        idx = sorted_ids.index(rid)
+
+        #  Horizontal edge to the right neighbour (same map row)
+        if map_col < self.MAP_ROOMS_PER_ROW - 1 and idx + 1 < num_rooms:
+            right_rid = sorted_ids[idx + 1]
+            right_map_row, _ = slot[right_rid]
+            if right_map_row == map_row:
+                edge = "-" if right_rid in self._adj.get(rid, set()) else " "
+                self._safe_addstr(stdscr, screen_row,
+                                  screen_col + len(label), edge,
+                                  self._color(CP_MAP_EDGE))
+
+        #  Vertical edge to neighbour in the row below
+        for nid in self._adj.get(rid, set()):
+            nmap_row, nmap_col = slot[nid]
+            if nmap_row == map_row + 1 and nmap_col == map_col:
+                self._safe_addstr(stdscr, screen_row + 1, screen_col + 1, "|",
+                                  self._color(CP_MAP_EDGE))
+
+    def _draw_minimap(self, stdscr, cols: int) -> None:
         """
         Draw a node-graph minimap built from the adjacency matrix.
 
-        Rooms are laid out in a snake grid (up to ROOMS_PER_ROW per row).
+        Rooms are laid out in a snake grid (up to MAP_ROOMS_PER_ROW per row).
         Each node is labelled [N] and colour-coded:
           green  = current room
           cyan   = visited
@@ -514,71 +579,44 @@ class GameUI:
         Horizontal edges are drawn as '-', vertical edges as '|'.
         A '$' below a node means that room still has uncollected treasure.
         """
-        if not self._room_ids:
+        if not self._room_ids or cols <= self.PANEL_COL + 22:
             return
 
         current_room = self._engine.player.get_room()
         sorted_ids = sorted(self._room_ids)
-        room_count = len(sorted_ids)
-
-        rooms_per_row = 3
-        node_width = 5   # "[NN]" + 1 gap
-        map_top  = 14
+        slot = self._minimap_slot(sorted_ids)
         map_left = self.PANEL_COL
 
-        # Map each room_id to a (map_row, map_col) display slot
-        slot: dict[int, tuple[int, int]] = {}
-        for idx, rid in enumerate(sorted_ids):
-            slot[rid] = (idx // rooms_per_row, idx % rooms_per_row)
-
         # Section title
-        if map_top - 1 >= 2:
-            self._safe_addstr(stdscr, map_top - 1, map_left, "World Map:",
-                              self._color(CP_LEGEND_HD, bold=True))
+        self._safe_addstr(stdscr, self.MAP_TOP_ROW - 1, map_left, "World Map:",
+                          self._color(CP_LEGEND_HD, bold=True))
 
         for rid in sorted_ids:
             map_row, map_col = slot[rid]
-            screen_row = map_top + map_row * 2   # 2 rows per map-row (node + edge)
-            screen_col = map_left + map_col * node_width
+            screen_row = self.MAP_TOP_ROW + map_row * 2   # 2 rows per map-row
+            screen_col = map_left + map_col * self.MAP_NODE_WIDTH
 
-            # Node ---
-            label = f"[{rid + 1:1d}]"
-            if rid == current_room:
-                node_attr = self._color(CP_MAP_CUR,   bold=True)
-            elif rid in self._visited_rooms:
-                node_attr = self._color(CP_MAP_VIS,   bold=True)
-            else:
-                node_attr = self._color(CP_MAP_UNVIS, bold=True)
-            self._safe_addstr(stdscr, screen_row, screen_col, label, node_attr)
-
-            # Treasure indicator below node ---
-            if self._room_has_treasure.get(rid, False):
-                self._safe_addstr(stdscr, screen_row + 1,
-                                  screen_col + 1, "$",
-                                  self._color(CP_GOLD, bold=True))
-
-            #  Horizontal edge to the right neighbour (same map row) ---
-            idx = sorted_ids.index(rid)
-            if map_col < rooms_per_row - 1 and idx + 1 < room_count:
-                right_rid = sorted_ids[idx + 1]
-                right_map_row, _ = slot[right_rid]
-                if right_map_row == map_row:
-                    edge = "-" if right_rid in self._adj.get(rid, set()) else " "
-                    self._safe_addstr(stdscr, screen_row,
-                                      screen_col + len(label), edge,
-                                      self._color(CP_MAP_EDGE))
-
-            #  Vertical edge to neighbour in the row below ---
-            for neighbour_id in self._adj.get(rid, set()):
-                neighbour_map_row, neighbour_map_col = slot[neighbour_id]
-                if neighbour_map_row == map_row + 1 and neighbour_map_col == map_col:
-                    self._safe_addstr(stdscr, screen_row + 1,
-                                      screen_col + 1, "|",
-                                      self._color(CP_MAP_EDGE))
+            label = self._draw_minimap_node(
+                stdscr, rid, current_room, screen_row, screen_col
+            )
+            self._draw_minimap_edges(
+                stdscr, rid, sorted_ids, slot,
+                map_row, map_col, screen_row, screen_col, label
+            )
 
     # -----------------
     # Status bar
     # ----------------------------------------
+
+    def _build_status_line(self, room_id: int, room_count: int) -> str:
+        """Compose the status bar text from current game state."""
+        name = self._profile.get("player_name", "Player")
+        collected = self._engine.player.get_collected_count()
+        total = self.get_total_treasure_count()
+        return (
+            f"{name}  |  Gold: {collected}/{total}  |  "
+            f"Steps: {self._steps}  |  Room: {room_id + 1}/{room_count}"
+        )
 
     def _draw_statusbar(
         self, stdscr, rows: int, cols: int, room_id: int, room_count: int
@@ -589,30 +627,33 @@ class GameUI:
             self._color(CP_CONTROLS),
         )
 
-        collected = self._engine.player.get_collected_count()
-        total = self.get_total_treasure_count()
-        name = self._profile.get("player_name", "Player")
-
-        status = (
-            f"{name}  |  Gold: {collected}/{total}  |  "
-            f"Steps: {self._steps}  |  Room: {room_id + 1}/{room_count}"
-        )
+        status = self._build_status_line(room_id, room_count)
         self._safe_addstr(stdscr, rows - 2, 0, status[: cols - 1],
                           self._color(CP_STATUS, bold=True))
 
-        _footer = "rajvansh@uoguelph.com"
+        footer_text = "rajvansh@uoguelph.com"
         self._safe_addstr(stdscr, rows - 1, 0, "Treasure Run",
                           self._color(CP_HEADER))
         self._safe_addstr(
             stdscr, rows - 1,
-            max(0, cols - len(_footer) - 1),
-            _footer,
+            max(0, cols - len(footer_text) - 1),
+            footer_text,
             self._color(CP_HEADER),
         )
 
     # -----------------------------------------------------------------------
     # Victory / quit screens
     # -----------------------------------------------------------------------
+
+    def _build_victory_summary(self) -> str:
+        """Compose the one-line victory stats string."""
+        total = self.get_total_treasure_count()
+        collected = self._engine.player.get_collected_count()
+        room = self._engine.player.get_room()
+        return (
+            f"Treasures: {collected}/{total}  |  "
+            f"Steps: {self._steps}  |  Final Room: {room}"
+        )
 
     def _show_victory(self, stdscr) -> None:
         self._update_profile()
@@ -626,18 +667,9 @@ class GameUI:
 
         self._draw_profile_block(stdscr, start_row=4)
 
-        total     = self.get_total_treasure_count()
-        collected = self._engine.player.get_collected_count()
-        room      = self._engine.player.get_room()
-
-        self._safe_addstr(
-            stdscr, 11, 4,
-            (
-                f"Treasures: {collected}/{total}  |  "
-                f"Steps: {self._steps}  |  Final Room: {room}"
-            )[: cols - 5],
-            self._color(CP_STATUS, bold=True),
-        )
+        summary = self._build_victory_summary()
+        self._safe_addstr(stdscr, 11, 4, summary[: cols - 5],
+                          self._color(CP_STATUS, bold=True))
 
         if self._start_time is not None:
             elapsed = int(time() - self._start_time)
@@ -645,8 +677,8 @@ class GameUI:
                               f"Time elapsed: {elapsed} seconds"[: cols - 5],
                               self._color(CP_HEADER))
 
-        _prompt = "Press any key to exit..."
-        self._safe_addstr(stdscr, rows - 2, mid - len(_prompt) // 2, _prompt,
+        prompt = "Press any key to exit..."
+        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt,
                           self._color(CP_CONTROLS))
         stdscr.refresh()
         stdscr.getch()
@@ -664,17 +696,15 @@ class GameUI:
         self._draw_profile_block(stdscr, start_row=4)
 
         collected = self._engine.player.get_collected_count()
-        self._safe_addstr(
-            stdscr, 11, 4,
-            (
-                f"This run:  {collected} treasure(s) collected  |  "
-                f"{self._steps} steps taken"
-            )[: cols - 5],
-            self._color(CP_STATUS),
+        run_line = (
+            f"This run:  {collected} treasure(s) collected  |  "
+            f"{self._steps} steps taken"
         )
+        self._safe_addstr(stdscr, 11, 4, run_line[: cols - 5],
+                          self._color(CP_STATUS))
 
-        _prompt = "Press any key to exit..."
-        self._safe_addstr(stdscr, rows - 2, mid - len(_prompt) // 2, _prompt,
+        prompt = "Press any key to exit..."
+        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt,
                           self._color(CP_CONTROLS))
         stdscr.refresh()
         stdscr.getch()
@@ -717,8 +747,8 @@ class GameUI:
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         try:
-            with open(self._profile_path, "w", encoding="utf-8") as profile_file:
-                json.dump(self._profile, profile_file, indent=2)
+            with open(self._profile_path, "w", encoding="utf-8") as f:
+                json.dump(self._profile, f, indent=2)
         except OSError:
             pass
 
