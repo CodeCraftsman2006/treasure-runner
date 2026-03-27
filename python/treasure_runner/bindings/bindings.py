@@ -191,13 +191,3 @@ lib.game_engine_get_room_ids.restype = ctypes.c_int
 
 lib.game_engine_free_string.argtypes = [ctypes.c_void_p]
 lib.game_engine_free_string.restype = None
-
-lib.game_engine_get_total_treasure_count.argtypes = [
-    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)
-]
-lib.game_engine_get_total_treasure_count.restype = ctypes.c_int
-
-lib.game_engine_is_victory.argtypes = [
-    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)
-]
-lib.game_engine_is_victory.restype = ctypes.c_int

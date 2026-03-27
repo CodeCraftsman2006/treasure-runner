@@ -111,21 +111,3 @@ class GameEngine:
     def __del__(self):
         """Destructor - ensure cleanup."""
         self.destroy()
-    
-    def get_total_treasure_count(self) -> int:
-        """Get total number of treasures across all rooms."""
-        count = ctypes.c_int()
-        status = lib.game_engine_get_total_treasure_count(
-            self._eng, ctypes.byref(count)
-        )
-        if status != Status.OK:
-            raise status_to_exception(status, "Failed to get total treasure count")
-        return count.value
-
-    def is_victory(self) -> bool:
-        """Return True if every treasure in the world has been collected."""
-        result = ctypes.c_int()
-        status = lib.game_engine_is_victory(self._eng, ctypes.byref(result))
-        if status != Status.OK:
-            raise status_to_exception(status, "Failed to check victory")
-        return result.value == 1
