@@ -1,0 +1,282 @@
+Evaluation of rajvansh for A3
+
+
+********************
+ *Grading Summary*
+ ********************
+
+Build: PASSED (submission compiled successfully)
+Linter suppression check: PASSED
+API: 25.00/25.0 (181/181 tests passed)
+C Test Coverage: 0.00/10.0 (student 29.31%)
+C Memory Safety: 10.0/10.0 (no errors)
+C Code Quality: 10.0/10.0 (0w, 0e)
+Python API Compliance: 10.00/10.0 (25/25 tests passed)
+Python Code Quality: 0/7.0 (2w, 7e, rating 0.0/10)
+Python Test Coverage: 8.00/8.0 (85.0%)
+Python MVC Inspection: 20.00/20.0 (0 issue(s) found)
+Total Score (before penalty): 83.0/100
+Late penalty: -0 mark(s). Adjusted grade: 83.0/100
+
+********************
+ *Grading Details*
+ ********************
+
+=== Compilation Check ===
+Running 'make dist' to build libbackend.so...
+Running make dist...
+Using libpuzzlegen-linux-amd64.so
+gcc -Wall -Wextra -O2 -fPIC -fvisibility=default -Iinclude \
+    -Iinclude \
+    -I../data_gen/include \
+    -c src/game_engine.c -o build/game_engine.o
+gcc -Wall -Wextra -O2 -fPIC -fvisibility=default -Iinclude \
+    -Iinclude \
+    -I../data_gen/include \
+    -c src/graph.c -o build/graph.o
+gcc -Wall -Wextra -O2 -fPIC -fvisibility=default -Iinclude \
+    -Iinclude \
+    -I../data_gen/include \
+    -c src/player.c -o build/player.o
+gcc -Wall -Wextra -O2 -fPIC -fvisibility=default -Iinclude \
+    -Iinclude \
+    -I../data_gen/include \
+    -c src/room.c -o build/room.o
+gcc -Wall -Wextra -O2 -fPIC -fvisibility=default -Iinclude \
+    -Iinclude \
+    -I../data_gen/include \
+    -c src/world_loader.c -o build/world_loader.o
+gcc -shared -o lib/libbackend.so \
+    build/game_engine.o build/graph.o build/player.o build/room.o build/world_loader.o \
+    -L../dist -lpuzzlegen -lm \
+    -Wl,-rpath,'$ORIGIN'
+✓ Built lib/libbackend.so
+✓ Student code compiled successfully
+
+Running student test build...
+Running C unit tests...
+
+=== Running test_runner ===
+Running suite(s): playerTests
+ roomTests
+ worldLoaderTests
+ gameEngineTests
+63%: Checks: 30, Failures: 11, Errors: 0
+tests/world_loader_test.c:16:F:core:test_load_world_success:0: Assertion 's == OK' failed: s == 10, OK == 0
+tests/world_loader_test.c:53:F:core:test_deep_copy:0: Assertion 's == OK' failed: s == 10, OK == 0
+tests/game_engine_test.c:15:F:core:test_engine_create_success:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:28:F:core:test_engine_room_count:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:48:F:core:test_player_move_valid:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:68:F:core:test_engine_reset:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:87:F:core:test_render_current_room:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:107:F:core:test_get_room_ids:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:129:F:core:test_engine_treasure_collection:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:156:F:core:test_engine_reset_clears_treasures:0: Assertion 's == OK' failed: s == 11, OK == 0
+tests/game_engine_test.c:183:F:core:test_engine_push_obstacle:0: Assertion 's == OK' failed: s == 11, OK == 0
+
+✓ All tests passed
+
+Compilation check PASSED.
+
+=== Linter Suppression Check ===
+Scanning Python files in python/...
+Scanning C files in c/src/...
+Scanning C files in c/include/...
+Scanning C files in c/...
+No linter suppressions detected.
+
+
+=== Instructor Tests (API Compliance) ===
+
+--- Test Suite: player  ---
+
+
+Results: 40 passed, 0 failed (total: 40)
+
+--- Test Suite: room  ---
+
+
+Results: 70 passed, 0 failed (total: 70)
+
+--- Test Suite: game_engine  ---
+
+
+Results: 37 passed, 0 failed (total: 37)
+
+--- Test Suite: world_loader  ---
+
+
+Results: 31 passed, 0 failed (total: 31)
+
+--- Test Suite: rendering  ---
+
+Running test: simple
+  ✓ simple: PASS
+
+Running test: multiroom
+  ✓ multiroom: PASS
+
+Running test: complex
+  ✓ complex: PASS
+
+Rendering integration tests: 3 passed, 0 failed (total: 3)
+
+
+=== C Test Coverage ===
+[NOTE] Student coverage 29.31% is below minimum threshold 50%.
+--- Student Coverage Log ---
+[WARN] all_tests_cov had failures (continuing for coverage)
+[coverage] Running gcov...
+[coverage] Weighted summary: lines=29.31% branches=36.48%
+
+
+=== C Memory Safety ===
+=== Memory Test Suite ===
+Config: ../assets/treasure_runner.ini
+
+  Running: basic_create_destroy... PASS
+  Running: multiple_create_destroy_cycles... PASS
+  Running: null_destroy... PASS
+  Running: player_access... PASS
+  Running: movement_operations... PASS
+  Running: room_queries... PASS
+  Running: rendering_operations... PASS
+  Running: reset_operations... PASS
+  Running: stress_allocations... PASS
+  Running: edge_cases... PASS
+  Running: interleaved_engines... PASS
+
+=== Test Summary ===
+Tests run: 11
+Tests passed: 11
+Tests failed: 0
+
+✓ All memory tests passed!
+==1487== Memcheck, a memory error detector
+==1487== Copyright (C) 2002-2022, and GNU GPL'd, by Julian Seward et al.
+==1487== Using Valgrind-3.19.0 and LibVEX; rerun with -h for copyright info
+==1487== Command: ./grading_bin/memory_test ../assets/treasure_runner.ini
+==1487== 
+==1487== 
+==1487== HEAP SUMMARY:
+==1487==     in use at exit: 0 bytes in 0 blocks
+==1487==   total heap usage: 3,390 allocs, 3,390 frees, 564,800 bytes allocated
+==1487== 
+==1487== All heap blocks were freed -- no leaks are possible
+==1487== 
+==1487== For lists of detected and suppressed errors, rerun with: -s
+==1487== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+No memory errors detected. Score = 10.0/10.0
+
+=== C Code Quality ===
+0 issues found (0 warnings, 0 errors).
+
+=== Python API Compliance ===
+test_engine_create_with_valid_config (test_game_engine.TestGameEngineBasic.test_engine_create_with_valid_config)
+Test creating a game engine with a valid config file. ... ok
+test_engine_get_room_count (test_game_engine.TestGameEngineBasic.test_engine_get_room_count)
+Test getting the number of rooms in the world. ... ok
+test_engine_get_room_dimensions (test_game_engine.TestGameEngineBasic.test_engine_get_room_dimensions)
+Test getting current room dimensions. ... ok
+test_engine_has_player (test_game_engine.TestGameEngineBasic.test_engine_has_player)
+Test that engine provides access to player. ... ok
+test_move_player_all_directions (test_game_engine.TestGameEngineMovement.test_move_player_all_directions)
+Test that we can attempt movement in all four directions. ... ok
+test_move_player_north (test_game_engine.TestGameEngineMovement.test_move_player_north)
+Test moving player north (may succeed or fail based on walls). ... ok
+test_render_contains_player_symbol (test_game_engine.TestGameEngineRendering.test_render_contains_player_symbol)
+Test that rendered room contains the player symbol '@'. ... ok
+test_render_current_room_returns_string (test_game_engine.TestGameEngineRendering.test_render_current_room_returns_string)
+Test that rendering returns a non-empty string. ... ok
+test_render_has_newlines (test_game_engine.TestGameEngineRendering.test_render_has_newlines)
+Test that rendered room is multi-line. ... ok
+test_reset_returns_player_to_start (test_game_engine.TestGameEngineReset.test_reset_returns_player_to_start)
+Test that reset returns player to starting position. ... ok
+test_reset_succeeds (test_game_engine.TestGameEngineReset.test_reset_succeeds)
+Test that reset operation completes without error. ... ok
+test_player_starts_with_no_treasures (test_game_engine.TestGameEngineTreasure.test_player_starts_with_no_treasures)
+Test that player starts with zero collected treasures. ... ok
+test_treasure_collection_increments_count (test_game_engine.TestGameEngineTreasure.test_treasure_collection_increments_count)
+Test that moving to a treasure location increments collection count. ... ok
+test_player_get_position (test_player.TestPlayerBasic.test_player_get_position)
+Test getting the player's position. ... ok
+test_player_get_room (test_player.TestPlayerBasic.test_player_get_room)
+Test getting the player's current room ID. ... ok
+test_player_position_within_room_bounds (test_player.TestPlayerBasic.test_player_position_within_room_bounds)
+Test that player position is within room dimensions. ... ok
+test_player_room_changes_on_portal_use (test_player.TestPlayerRoomTracking.test_player_room_changes_on_portal_use)
+Test that room ID changes when player uses a portal. ... ok
+test_player_room_id_consistent (test_player.TestPlayerRoomTracking.test_player_room_id_consistent)
+Test that player's room ID remains valid. ... ok
+test_treasure_dict_has_required_fields (test_player.TestPlayerTreasureStructure.test_treasure_dict_has_required_fields)
+Test that treasure dictionaries have all required fields. ... ok
+test_collected_treasure_after_collection (test_player.TestPlayerTreasureTracking.test_collected_treasure_after_collection)
+Test that collecting a treasure updates the player's state. ... ok
+test_collected_treasures_empty_at_start (test_player.TestPlayerTreasureTracking.test_collected_treasures_empty_at_start)
+Test that collected treasures list is empty at start. ... ok
+test_get_collected_count_starts_at_zero (test_player.TestPlayerTreasureTracking.test_get_collected_count_starts_at_zero)
+Test that player starts with zero treasures collected. ... ok
+test_get_collected_treasures_returns_list (test_player.TestPlayerTreasureTracking.test_get_collected_treasures_returns_list)
+Test that get_collected_treasures returns a list. ... ok
+test_has_collected_treasure_returns_bool (test_player.TestPlayerTreasureTracking.test_has_collected_treasure_returns_bool)
+Test that has_collected_treasure returns a boolean. ... ok
+test_player_has_not_collected_nonexistent_treasure (test_player.TestPlayerTreasureTracking.test_player_has_not_collected_nonexistent_treasure)
+Test that player hasn't collected treasures at game start. ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 0.005s
+
+OK
+
+
+Test Results: 25 passed, 0 failed, 0 errors (total: 25)
+Score: 10.0 × (25/25) = 10.00
+
+=== Python Code Quality ===
+************* Module treasure_runner.ui.game_ui
+treasure_runner/ui/game_ui.py:789:0: C0304: Final newline missing (missing-final-newline)
+treasure_runner/ui/game_ui.py:141:12: C0103: Variable name "n" doesn't conform to snake_case naming style (invalid-name)
+treasure_runner/ui/game_ui.py:433:4: R0914: Too many local variables (16/10) (too-many-locals)
+treasure_runner/ui/game_ui.py:433:44: W0613: Unused argument 'cols' (unused-argument)
+treasure_runner/ui/game_ui.py:465:40: W0613: Unused argument 'rows' (unused-argument)
+treasure_runner/ui/game_ui.py:471:4: R0914: Too many local variables (11/10) (too-many-locals)
+treasure_runner/ui/game_ui.py:546:4: R0914: Too many local variables (18/10) (too-many-locals)
+treasure_runner/ui/game_ui.py:570:4: R0914: Too many local variables (13/10) (too-many-locals)
+treasure_runner/ui/game_ui.py:750:68: C0103: Variable name "f" doesn't conform to snake_case naming style (invalid-name)
+
+9 issues found (2 warnings, 7 errors). Score = 0/7.0
+
+=== Python Test Coverage ===
+Name                                    Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------
+treasure_runner/bindings/bindings.py       83      4    95%   81-82, 104-105
+treasure_runner/models/exceptions.py       27      3    89%   105-120
+treasure_runner/models/game_engine.py      62     16    74%   18, 23, 51, 64, 79, 85-103, 107-109
+treasure_runner/models/player.py           29      7    76%   23, 32, 42-56
+---------------------------------------------------------------------
+TOTAL                                     201     30    85%
+[EXCELLENT] Coverage 85.00% meets or exceeds target 80%.
+Coverage: 85.0%
+Minimum threshold: 50%, Target: 80%
+Coverage score: 8.0/8.0
+
+=== Python MVC Inspection ===
+===========================
+
+Summary Metrics:
+  num_required_files_found           : 3
+  num_required_classes_found         : 3
+  num_cycles                         : 0
+  num_ctypes_outside_bindings        : 0
+  num_curses_outside_view            : 0
+  num_dungeon_exception_imports      : 0
+  num_sys_exit_calls                 : 0
+  naming_violations                  : 0
+  unparsable_files                   : 0
+
+Violations:
+  None detected — structure appears sound.
+
+Computed MVC structure score: 20.00/20.0
+
