@@ -4,58 +4,89 @@ GameUI: Curses-based view for Treasure Run.
 Handles all rendering, input, and screen layout.
 The controller (GameEngine) is queried for state; this class
 never touches ctypes or C pointers directly.
-
-Curses structure adapted from class examples (COMP 348 lecture notes).
 """
 
+#imports
 import curses
 import json
 from datetime import datetime, timezone
+from typing import Optional
+from time import time
 
 from ..models.exceptions import ImpassableError, GameEngineError
 from ..bindings import Direction
 
-
+#minimum termal reqirements
 MIN_ROWS = 24
 MIN_COLS = 80
 
+#ampping keys
 KEY_MAP = {
-    curses.KEY_UP:    Direction.NORTH,
-    ord('w'):         Direction.NORTH,
-    ord('W'):         Direction.NORTH,
-    curses.KEY_DOWN:  Direction.SOUTH,
-    ord('s'):         Direction.SOUTH,
-    ord('S'):         Direction.SOUTH,
+    curses.KEY_UP: Direction.NORTH,
+    ord("w"): Direction.NORTH,
+    ord("W"): Direction.NORTH,
+    curses.KEY_DOWN: Direction.SOUTH,
+    ord("s"): Direction.SOUTH,
+    ord("S"): Direction.SOUTH,
     curses.KEY_RIGHT: Direction.EAST,
-    ord('d'):         Direction.EAST,
-    ord('D'):         Direction.EAST,
-    curses.KEY_LEFT:  Direction.WEST,
-    ord('a'):         Direction.WEST,
-    ord('A'):         Direction.WEST,
+    ord("d"): Direction.EAST,
+    ord("D"): Direction.EAST,
+    curses.KEY_LEFT: Direction.WEST,
+    ord("a"): Direction.WEST,
+    ord("A"): Direction.WEST,
 }
 
+#sting for the info on how ot play the game
 CONTROLS = "Arrows/WASD: move  >: portal  r: reset  q: quit"
+
+
+# Colour pair indices  (initialised in _init_colors)
+
+CP_DEFAULT   = 0   # curses default
+CP_HEADER    = 1   # cyanish     on black         - header bar
+CP_WALL      = 2   #  blue on black                 - # walls
+CP_PLAYER    = 3   # yellow cloest to gold on black  - @ player
+CP_GOLD      = 4   # yellow on black                 - $ gold
+CP_PORTAL    = 5   # magnta/red on black             - X portals
+CP_FLOOR     = 6   # white on black                   - dots / open space
+CP_LEGEND_HD = 7   # light blue on black              - legend heading
+CP_STATUS    = 8   # green on black                   - status bar
+CP_CONTROLS  = 9   # white on black                  - controls bar
+CP_MSG       = 10  # yellow on black                 - in-game messages
+CP_MAP_CUR   = 11  # black on green                   - current room node
+CP_MAP_VIS   = 12  # black on cyan                  - visited room node
+CP_MAP_UNVIS = 13  # black on white                    - unvisited room node
+CP_MAP_EDGE  = 14  # white on black                     - minimap edges
+CP_WIN_TITLE = 15  # black on yellow                    - victory / game-over title
 
 
 class TerminalTooSmallError(Exception):
     """Raised when the terminal is too small to display the game."""
 
 
+
+
+
+
 class GameUI:
-    """
-    Curses view for Treasure Run.
+    """Curses view for Treasure Run."""
 
-    Responsibilities:
-      - Splash / quit screens (using curses)
-      - Main game loop: read input -> call GameEngine -> redraw
-      - Profile display and update
-      - All curses rendering
+    # ------------------
+    # Treasure tracking
+    # ------------------
 
-    Not responsible for:
-      - Game logic (lives in GameEngine)
-      - JSON serialization (lives in run_game.py)
-      - ctypes or C pointers
-    """
+    def get_total_treasure_count(self) -> int:
+        """Returns the total treasure count, computed once at init."""
+        return self._total_treasure_count
+
+    def is_victory(self) -> bool:
+        """Returns True if player collected all treasure (and there is treasure)."""
+        total = self.get_total_treasure_count()
+        return total > 0 and self._engine.player.get_collected_count() == total
+
+    # -------------
+    # Construction
+    # -----------------------------------------
 
     def __init__(self, engine, profile: dict, profile_path: str):
         self._engine = engine
@@ -63,19 +94,146 @@ class GameUI:
         self._profile_path = profile_path
         self._message = "Welcome! Use arrows or WASD to move."
         self._steps = 0
+        self._stdscr: Optional["curses._CursesWindow"] = None
+        self._victory = False
+        self._start_time = None
+
+        # World graph data - built once by _explore_world()
+        self._room_ids: list[int] = []
+        self._adj: dict[int, set[int]] = {}        # adjacency matrix as dict of sets
+        self._room_has_treasure: dict[int, bool] = {}
+        self._visited_rooms: set[int] = set()
+
+        self._total_treasure_count = self._explore_world()
+
+    def _explore_world(self) -> int:
+        """
+        Walk every reachable room once to:
+          - Count '$' tiles (treasure total).
+          - Build an adjacency matrix (dict of sets) for the minimap.
+          - Record which rooms contain treasure.
+        Resets the engine before AND after so the player starts fresh.
+        Returns the total treasure count (raw $ count + 1 for 0-based IDs).
+        """
+        total_gold = 0
+        try:
+            self._engine.reset()
+            self._room_ids = self._engine.get_room_ids()
+            n = len(self._room_ids)
+
+            self._adj = {rid: set() for rid in self._room_ids}
+            self._room_has_treasure = {rid: False for rid in self._room_ids}
+
+            visited: set[int] = set()
+
+            def visit_current() -> None:
+                nonlocal total_gold
+                rid = self._engine.player.get_room()
+                if rid in visited:
+                    return
+                render = self._engine.render_current_room()
+                gold = render.count("$")
+                total_gold += gold
+                self._room_has_treasure[rid] = gold > 0
+                visited.add(rid)
+
+            visit_current()
+
+            # BFS-style walk until all rooms discovered
+            for _ in range(n * 4):
+                if len(visited) == n:
+                    break
+                current = self._engine.player.get_room()
+                for direction in (Direction.NORTH, Direction.SOUTH,
+                                  Direction.EAST, Direction.WEST):
+                    try:
+                        self._engine.move_player(direction)
+                        neighbour = self._engine.player.get_room()
+                        if neighbour != current:
+                            # Record bidirectional edge
+                            self._adj[current].add(neighbour)
+                            self._adj[neighbour].add(current)
+                            visit_current()
+                            break   # stay in new room to explore further
+                    except (ImpassableError, GameEngineError):
+                        continue
+
+        except (AttributeError, GameEngineError):
+            total_gold = 0
+        finally:
+            try:
+                self._engine.reset()
+            except (AttributeError, GameEngineError):
+                pass
+
+        return total_gold + 1 if total_gold > 0 else 0
+
+    # ---------------------------------------------
+    # Curses entry point
+    # -----------------------------------------------------------
 
     def run(self) -> None:
-        """Launch the curses wrapper and start the game."""
         curses.wrapper(self._main)
 
     def _main(self, stdscr) -> None:
         self._stdscr = stdscr
         curses.curs_set(0)
         stdscr.keypad(True)
+        self._init_colors()
+
+        self._start_time = time()
+
         self._check_terminal_size()
         self._show_splash(stdscr)
+
         self._game_loop(stdscr)
-        self._show_quit_screen(stdscr)
+
+        if self._victory:
+            self._show_victory(stdscr)
+        else:
+            self._show_quit_screen(stdscr)
+
+    # ------------
+    # Colour initialisation
+    # -----------------------------------
+
+    @staticmethod
+    def _init_colors() -> None:
+        if not curses.has_colors():
+            return
+        curses.start_color()
+        curses.use_default_colors()
+
+        curses.init_pair(CP_HEADER,    curses.COLOR_CYAN,    -1)
+        curses.init_pair(CP_WALL,      curses.COLOR_BLUE,    -1)
+        curses.init_pair(CP_PLAYER,    curses.COLOR_YELLOW,  -1)
+        curses.init_pair(CP_GOLD,      curses.COLOR_YELLOW,  -1)
+        curses.init_pair(CP_PORTAL,    curses.COLOR_MAGENTA, -1)
+        curses.init_pair(CP_FLOOR,     curses.COLOR_WHITE,   -1)
+        curses.init_pair(CP_LEGEND_HD, curses.COLOR_CYAN,    -1)
+        curses.init_pair(CP_STATUS,    curses.COLOR_GREEN,   -1)
+        curses.init_pair(CP_CONTROLS,  curses.COLOR_WHITE,   -1)
+        curses.init_pair(CP_MSG,       curses.COLOR_YELLOW,  -1)
+        curses.init_pair(CP_MAP_CUR,   curses.COLOR_BLACK,   curses.COLOR_GREEN)
+        curses.init_pair(CP_MAP_VIS,   curses.COLOR_BLACK,   curses.COLOR_CYAN)
+        curses.init_pair(CP_MAP_UNVIS, curses.COLOR_BLACK,   curses.COLOR_WHITE)
+        curses.init_pair(CP_MAP_EDGE,  curses.COLOR_WHITE,   -1)
+        curses.init_pair(CP_WIN_TITLE, curses.COLOR_BLACK,   curses.COLOR_YELLOW)
+
+
+        #to make the portal color mtch the room walls
+                
+        curses.init_pair(20, curses.COLOR_BLUE, -1)
+        curses.init_pair(21, curses.COLOR_GREEN, -1)
+        curses.init_pair(22, curses.COLOR_MAGENTA, -1)
+        curses.init_pair(23, curses.COLOR_CYAN, -1)
+
+
+        
+
+    # -------------------------------
+    # Helpers
+    # ----------------------------------------
 
     def _check_terminal_size(self) -> None:
         rows, cols = self._stdscr.getmaxyx()
@@ -86,33 +244,70 @@ class GameUI:
                 f"(current: {cols}x{rows}). Please resize and try again."
             )
 
+    @staticmethod
+    def _safe_addstr(stdscr, row: int, col: int, text: str,
+                     attr: int = 0) -> None:
+        try:
+            stdscr.addstr(row, col, text, attr)
+        except curses.error:
+            pass
+
+    @staticmethod
+    def _color(pair: int, bold: bool = False) -> int:
+        attr = curses.color_pair(pair)
+        if bold:
+            attr |= curses.A_BOLD
+        return attr
+
+    # -----------------------------------
+    # Splash screen
+    # ------------------------
+
     def _show_splash(self, stdscr) -> None:
         stdscr.clear()
         rows, cols = stdscr.getmaxyx()
         mid = cols // 2
+
         title = "*** TREASURE RUN ***"
-        self._safe_addstr(stdscr, 2, mid - len(title) // 2, title)
+        self._safe_addstr(stdscr, 2, mid - len(title) // 2, title,
+                          self._color(CP_WIN_TITLE, bold=True))
+
         self._draw_profile_block(stdscr, start_row=4)
+
         prompt = "Press any key to start..."
-        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt)
+        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt,
+                          self._color(CP_CONTROLS))
         stdscr.refresh()
         stdscr.getch()
 
+    # ------------------
+    # Game loop
+    # ---------------------------------------
+
     def _game_loop(self, stdscr) -> None:
         while True:
+            if self._victory:
+                break
+            
             self._check_terminal_size()
             self._draw_screen(stdscr)
             key = stdscr.getch()
-            if key in (ord('q'), ord('Q')):
+
+            if key in (ord("q"), ord("Q")):
                 break
-            if key in (ord('r'), ord('R')):
+
+            if key in (ord("r"), ord("R")):
                 self._engine.reset()
                 self._steps = 0
+                self._victory = False
+                self._visited_rooms.clear()
                 self._message = "Game reset to beginning."
                 continue
-            if key == ord('>'):
-                self._handle_portal()
-                continue
+
+            #if key == ord(">"):
+            #    self._handle_portal()
+            #    continue
+
             direction = KEY_MAP.get(key)
             if direction is not None:
                 self._handle_move(direction)
@@ -122,13 +317,22 @@ class GameUI:
         try:
             self._engine.move_player(direction)
             self._steps += 1
+            self._visited_rooms.add(self._engine.player.get_room())
             after = self._engine.player.get_collected_count()
+
             if after > before:
                 delta = after - before
                 noun = "treasure" if delta == 1 else "treasures"
-                self._message = f"You picked up {delta} {noun}!"
+                total = self.get_total_treasure_count()
+                self._message = (
+                    f"You picked up {delta} {noun}! ({after}/{total})"
+                )
+                if self.is_victory():
+                    self._victory = True
+                    self._message = "All treasure collected! You win!"
             else:
                 self._message = ""
+
         except ImpassableError:
             self._message = "You can't go that way."
         except GameEngineError as exc:
@@ -142,113 +346,412 @@ class GameUI:
                 self._engine.move_player(direction)
                 self._steps += 1
                 after_room = self._engine.player.get_room()
+                self._visited_rooms.add(after_room)
+
                 if after_room != before_room:
-                    self._message = f"Entered room {after_room} through a portal!"
+                    self._message = (
+                        f"Entered room {after_room} through a portal!"
+                    )
                     return
+
             except (ImpassableError, GameEngineError):
                 continue
+
         self._message = "No portal reachable from here."
+
+    # -------------
+    # Main screen drawing
+    # ----------------------------
 
     def _draw_screen(self, stdscr) -> None:
         stdscr.clear()
         rows, cols = stdscr.getmaxyx()
-        self._safe_addstr(stdscr, 0, 0, (self._message or "")[:cols - 1])
+
+        # Always mark the current room as visited
+        self._visited_rooms.add(self._engine.player.get_room())
+
+        self._draw_header(stdscr, cols)
+        self._draw_grid(stdscr, rows, cols)
+        self._draw_right_panel(stdscr, rows, cols)
+        self._draw_statusbar(
+            stdscr, rows, cols,
+            self._engine.player.get_room(),
+            self._engine.get_room_count(),
+        )
+
+        stdscr.refresh()
+
+    def _draw_header(self, stdscr, cols: int) -> None:
+        collected = self._engine.player.get_collected_count()
+        total = self.get_total_treasure_count()
+        progress = f"{collected}/{total} treasures"
+        message = self._message or ""
+        full_message = f"{message}  |  {progress}" if message else progress
+
         room_id = self._engine.player.get_room()
         room_count = self._engine.get_room_count()
-        self._safe_addstr(stdscr, 1, 0,
-            f"Room {room_id}  |  {room_count} rooms in world"[:cols - 1])
+
+        self._safe_addstr(stdscr, 0, 0, full_message[: cols - 1],
+                          self._color(CP_MSG, bold=True))
+        self._safe_addstr(
+            stdscr, 1, 0,
+            f"Room {room_id + 1}  |  {room_count} rooms in world"[: cols - 1],
+            self._color(CP_HEADER),
+        )
+
+    def _draw_grid(self, stdscr, rows: int, cols: int) -> None:
+        """Render the current room with per-character colouring."""
+        GRID_MAX_COL = 48
+
+        # nneded to be delcleared golablly to avoid error in the loop
         room_str = self._engine.render_current_room()
-        room_lines = room_str.split("\n")
-        grid_rows_available = rows - 5
-        for i, line in enumerate(room_lines):
-            if i >= grid_rows_available:
+        room_id = self._engine.player.get_room()
+        neighbours = list(self._adj.get(room_id, []))
+        portal_index = 0
+        
+        for i, line in enumerate(room_str.split("\n")):
+            if i >= rows - 5:
                 break
-            self._safe_addstr(stdscr, 2 + i, 0, line[:cols - 1])
-        legend_col = 50
-        if cols > legend_col + 22:
-            self._safe_addstr(stdscr, 2, legend_col, "Game Elements:")
-            self._safe_addstr(stdscr, 3, legend_col, "@ - player")
-            self._safe_addstr(stdscr, 4, legend_col, "# - wall")
-            self._safe_addstr(stdscr, 5, legend_col, "$ - gold")
-            self._safe_addstr(stdscr, 6, legend_col, "x - exit/portal")
-        self._safe_addstr(stdscr, rows - 3, 0,
-            f"Game Controls: {CONTROLS}"[:cols - 1])
+            row = 2 + i
+            for j, ch in enumerate(line):
+                if j >= GRID_MAX_COL - 1:
+                    break
+                
+                room_id = self._engine.player.get_room()
+
+                wall_color = 20 + (room_id % 3)
+                # get connected rooms (actual portals)
+                neighbours = list(self._adj.get(room_id, []))
+
+                # pick first connected room if exists
+                if neighbours:
+                    target_room = neighbours[0]
+                    portal_color = 20 + (target_room % 4)
+                else:
+                    portal_color = CP_PORTAL  # fallback
+                    
+
+                if ch == "#":
+                    attr = self._color(wall_color, bold=True)
+                elif ch == "@":
+                    attr = self._color(CP_PLAYER, bold=True)
+                elif ch == "$":
+                    attr = self._color(CP_GOLD, bold=True)
+                elif ch in ("X", "x"):
+    
+                    if portal_index < len(neighbours):
+                        target_room = neighbours[portal_index]
+                        portal_color = 20 + (target_room % 4)
+                    else:
+                        portal_color = CP_PORTAL
+
+                    portal_index += 1
+                    attr = self._color(portal_color, bold=True)
+                else:
+                    attr = self._color(CP_FLOOR)
+                self._safe_addstr(stdscr, row, j, ch, attr)
+
+    # ----------------------------------
+    # Right panel  (legend + minimap)
+    # ---------------------------------------
+
+    PANEL_COL = 50   # left edge of the right panel
+
+    def _draw_right_panel(self, stdscr, rows: int, cols: int) -> None:
+        if cols <= self.PANEL_COL + 22:
+            return
+        self._draw_legend(stdscr)
+        self._draw_minimap(stdscr, rows, cols)
+
+    def _draw_legend(self, stdscr) -> None:
+        col = self.PANEL_COL
+        r = 2
+
+        self._safe_addstr(stdscr, r, col, "Game Elements:",
+                          self._color(CP_LEGEND_HD, bold=True))
+        r += 1
+        room_id = self._engine.player.get_room()
+        next_room = (room_id + 1) % 4
+
+        entries = [
+            ("@", " player", CP_PLAYER),
+            ("#", f" room {room_id + 1} wall", 20 + (room_id % 4)),
+            ("$", " gold", CP_GOLD),
+            ("x", f" to room {next_room + 1}", 20 + next_room),
+        ]
+
+        for symbol, label, pair in entries:
+            self._safe_addstr(stdscr, r, col,     symbol,
+                              self._color(pair, bold=True))
+            self._safe_addstr(stdscr, r, col + 1, label,
+                              self._color(CP_FLOOR))
+            r += 1
+
+        r += 1
+        self._safe_addstr(stdscr, r, col, "Map Key:",
+                          self._color(CP_LEGEND_HD, bold=True))
+        r += 1
+
+        map_key = [
+            ("[R]", " you are here",  CP_MAP_CUR),
+            ("[R]", " visited",       CP_MAP_VIS),
+            ("[R]", " unvisited",     CP_MAP_UNVIS),
+        ]
+        for symbol, label, pair in map_key:
+            self._safe_addstr(stdscr, r, col,
+                              symbol, self._color(pair, bold=True))
+            self._safe_addstr(stdscr, r, col + len(symbol),
+                              label,  self._color(CP_FLOOR))
+            r += 1
+
+    def _draw_minimap(self, stdscr, rows: int, cols: int) -> None:
+        """
+        Draw a node-graph minimap built from the adjacency matrix.
+
+        Rooms are laid out in a snake grid (up to ROOMS_PER_ROW per row).
+        Each node is labelled [N] and colour-coded:
+          green  = current room
+          cyan   = visited
+          white  = unvisited
+        Horizontal edges are drawn as '-', vertical edges as '|'.
+        A '$' below a node means that room still has uncollected treasure.
+        """
+        if not self._room_ids:
+            return
+
+        current_room = self._engine.player.get_room()
+        sorted_ids = sorted(self._room_ids)
+        n = len(sorted_ids)
+
+        ROOMS_PER_ROW = 3
+        NODE_W = 5   # "[NN]" + 1 gap
+        MAP_TOP  = 14
+        MAP_LEFT = self.PANEL_COL
+
+        # Map each room_id to a (map_row, map_col) display slot
+        slot: dict[int, tuple[int, int]] = {}
+        for idx, rid in enumerate(sorted_ids):
+            slot[rid] = (idx // ROOMS_PER_ROW, idx % ROOMS_PER_ROW)
+
+        # Section title
+        if MAP_TOP - 1 >= 2:
+            self._safe_addstr(stdscr, MAP_TOP - 1, MAP_LEFT, "World Map:",
+                              self._color(CP_LEGEND_HD, bold=True))
+
+        for rid in sorted_ids:
+            mr, mc = slot[rid]
+            screen_row = MAP_TOP + mr * 2   # 2 rows per map-row (node + edge)
+            screen_col = MAP_LEFT + mc * NODE_W
+
+            # Node ---
+            label = f"[{rid + 1:1d}]"
+            if rid == current_room:
+                node_attr = self._color(CP_MAP_CUR,   bold=True)
+            elif rid in self._visited_rooms:
+                node_attr = self._color(CP_MAP_VIS,   bold=True)
+            else:
+                node_attr = self._color(CP_MAP_UNVIS, bold=True)
+            self._safe_addstr(stdscr, screen_row, screen_col, label, node_attr)
+
+            # Treasure indicator below node ---
+            if self._room_has_treasure.get(rid, False):
+                self._safe_addstr(stdscr, screen_row + 1,
+                                  screen_col + 1, "$",
+                                  self._color(CP_GOLD, bold=True))
+
+            #  Horizontal edge to the right neighbour (same map row) ---
+            idx = sorted_ids.index(rid)
+            if mc < ROOMS_PER_ROW - 1 and idx + 1 < n:
+                right_rid = sorted_ids[idx + 1]
+                rmr, _ = slot[right_rid]
+                if rmr == mr:
+                    edge = "-" if right_rid in self._adj.get(rid, set()) else " "
+                    self._safe_addstr(stdscr, screen_row,
+                                      screen_col + len(label), edge,
+                                      self._color(CP_MAP_EDGE))
+
+            #  Vertical edge to neighbour in the row below ---
+            for nid in self._adj.get(rid, set()):
+                nmr, nmc = slot[nid]
+                if nmr == mr + 1 and nmc == mc:
+                    self._safe_addstr(stdscr, screen_row + 1,
+                                      screen_col + 1, "|",
+                                      self._color(CP_MAP_EDGE))
+
+    # -----------------
+    # Status bar
+    # ----------------------------------------
+
+    def _draw_statusbar(
+        self, stdscr, rows: int, cols: int, room_id: int, room_count: int
+    ) -> None:
+        self._safe_addstr(
+            stdscr, rows - 3, 0,
+            f"Game Controls: {CONTROLS}"[: cols - 1],
+            self._color(CP_CONTROLS),
+        )
+
         collected = self._engine.player.get_collected_count()
+        total = self.get_total_treasure_count()
         name = self._profile.get("player_name", "Player")
-        status = (f"{name}  |  Gold: {collected}  |  "
-                  f"Steps: {self._steps}  |  Room: {room_id}/{room_count}")
-        self._safe_addstr(stdscr, rows - 2, 0, status[:cols - 1])
-        footer_right = "rajvansh@email.com"
-        self._safe_addstr(stdscr, rows - 1, 0, "Treasure Run")
-        self._safe_addstr(stdscr, rows - 1,
-            max(0, cols - len(footer_right) - 1), footer_right)
+
+        status = (
+            f"{name}  |  Gold: {collected}/{total}  |  "
+            f"Steps: {self._steps}  |  Room: {room_id + 1}/{room_count}"
+        )
+        self._safe_addstr(stdscr, rows - 2, 0, status[: cols - 1],
+                          self._color(CP_STATUS, bold=True))
+
+        footer_text = "rajvansh@uoguelph.com"
+        self._safe_addstr(stdscr, rows - 1, 0, "Treasure Run",
+                          self._color(CP_HEADER))
+        self._safe_addstr(
+            stdscr, rows - 1,
+            max(0, cols - len(footer_text) - 1),
+            footer_text,
+            self._color(CP_HEADER),
+        )
+
+    # -----------------------------------------------------------------------
+    # Victory / quit screens
+    # -----------------------------------------------------------------------
+
+    def _show_victory(self, stdscr) -> None:
+        self._update_profile()
+        stdscr.clear()
+        rows, cols = stdscr.getmaxyx()
+        mid = cols // 2
+
+        title = "*** YOU WIN! ALL TREASURE COLLECTED! ***"
+        self._safe_addstr(stdscr, 2, mid - len(title) // 2, title,
+                          self._color(CP_WIN_TITLE, bold=True))
+
+        self._draw_profile_block(stdscr, start_row=4)
+
+        total     = self.get_total_treasure_count()
+        collected = self._engine.player.get_collected_count()
+        room      = self._engine.player.get_room()
+
+        summary = (
+            f"Treasures: {collected}/{total}  |  "
+            f"Steps: {self._steps}  |  Final Room: {room}"
+        )
+        self._safe_addstr(stdscr, 11, 4, summary[: cols - 5],
+                          self._color(CP_STATUS, bold=True))
+
+        if self._start_time is not None:
+            elapsed = int(time() - self._start_time)
+            self._safe_addstr(stdscr, 12, 4,
+                              f"Time elapsed: {elapsed} seconds"[: cols - 5],
+                              self._color(CP_HEADER))
+
+        prompt = "Press any key to exit..."
+        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt,
+                          self._color(CP_CONTROLS))
         stdscr.refresh()
+        stdscr.getch()
 
     def _show_quit_screen(self, stdscr) -> None:
         self._update_profile()
         stdscr.clear()
         rows, cols = stdscr.getmaxyx()
         mid = cols // 2
+
         title = "--- GAME OVER ---"
-        self._safe_addstr(stdscr, 2, mid - len(title) // 2, title)
+        self._safe_addstr(stdscr, 2, mid - len(title) // 2, title,
+                          self._color(CP_WIN_TITLE, bold=True))
+
         self._draw_profile_block(stdscr, start_row=4)
+
         collected = self._engine.player.get_collected_count()
-        run_line = (f"This run:  {collected} treasure(s) collected  |  "
-                    f"{self._steps} steps taken")
-        self._safe_addstr(stdscr, 11, 4, run_line[:cols - 5])
+        run_line = (
+            f"This run:  {collected} treasure(s) collected  |  "
+            f"{self._steps} steps taken"
+        )
+        self._safe_addstr(stdscr, 11, 4, run_line[: cols - 5],
+                          self._color(CP_STATUS))
+
         prompt = "Press any key to exit..."
-        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt)
+        self._safe_addstr(stdscr, rows - 2, mid - len(prompt) // 2, prompt,
+                          self._color(CP_CONTROLS))
         stdscr.refresh()
         stdscr.getch()
 
+    # -----------------------------------------------------------------------
+    # Profile helpers
+    # -----------------------------------------------------------------------
+
     def _draw_profile_block(self, stdscr, start_row: int) -> None:
-        p = self._profile
+        profile = self._profile
         _, cols = stdscr.getmaxyx()
+
         lines = [
-            f"Player             : {p.get('player_name', 'Unknown')}",
-            f"Games played       : {p.get('games_played', 0)}",
-            f"Max treasure       : {p.get('max_treasure_collected', 0)}",
-            f"Rooms completed    : {p.get('most_rooms_world_completed', 0)}",
-            f"Last played        : {p.get('timestamp_last_played', 'never')}",
+            f"Player             : {profile.get('player_name', 'Unknown')}",
+            f"Games played       : {profile.get('games_played', 0)}",
+            f"Max treasure       : {profile.get('max_treasure_collected', 0)}",
+            f"Rooms completed    : {profile.get('most_rooms_world_completed', 0)}",
+            f"Last played        : {profile.get('timestamp_last_played', 'never')}",
         ]
+
         for i, line in enumerate(lines):
-            self._safe_addstr(stdscr, start_row + i, 4, line[:cols - 5])
+            self._safe_addstr(stdscr, start_row + i, 4, line[: cols - 5],
+                              self._color(CP_FLOOR))
 
     def _update_profile(self) -> None:
         collected = self._engine.player.get_collected_count()
-        room_id = self._engine.player.get_room()
-        self._profile["games_played"] = self._profile.get("games_played", 0) + 1
+        room_id   = self._engine.player.get_room()
+
+        self._profile["games_played"] = (
+            self._profile.get("games_played", 0) + 1
+        )
         self._profile["max_treasure_collected"] = max(
-            self._profile.get("max_treasure_collected", 0), collected)
+            self._profile.get("max_treasure_collected", 0), collected
+        )
         self._profile["most_rooms_world_completed"] = max(
-            self._profile.get("most_rooms_world_completed", 0), room_id)
-        self._profile["timestamp_last_played"] = (
-            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            self._profile.get("most_rooms_world_completed", 0), room_id
+        )
+        self._profile["timestamp_last_played"] = datetime.now(
+            timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         try:
             with open(self._profile_path, "w", encoding="utf-8") as f:
                 json.dump(self._profile, f, indent=2)
         except OSError:
             pass
 
+    # -----------------------------------------------------------------------
+    # Static helper
+    # -----------------------------------------------------------------------
+
     @staticmethod
-    def _safe_addstr(stdscr, row: int, col: int, text: str) -> None:
+    def _safe_addstr(stdscr, row: int, col: int, text: str,
+                     attr: int = 0) -> None:
         try:
-            stdscr.addstr(row, col, text)
+            stdscr.addstr(row, col, text, attr)
         except curses.error:
             pass
 
 
+# ---------------------------------------------------------------------------
+# Standalone helper
+# ---------------------------------------------------------------------------
+
 def prompt_player_name(stdscr) -> str:
-    """Prompt for player name when no profile exists."""
     curses.echo()
     curses.curs_set(1)
+
     rows, cols = stdscr.getmaxyx()
     stdscr.clear()
+
     msg = "No profile found. Enter your player name:"
     stdscr.addstr(rows // 2 - 1, max(0, cols // 2 - len(msg) // 2), msg)
     stdscr.addstr(rows // 2, max(0, cols // 2 - 20), "> ")
     stdscr.refresh()
+
     name_bytes = stdscr.getstr(rows // 2, max(0, cols // 2 - 18), 40)
+
     curses.noecho()
     curses.curs_set(0)
+
     return name_bytes.decode("utf-8").strip() or "Player"
