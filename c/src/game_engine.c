@@ -416,7 +416,8 @@ Status game_engine_try_portal(GameEngine *eng) {
     Room *r = get_player_room(eng);
     if (!r) return INTERNAL_ERROR;
 
-    int cx = 0, cy = 0;
+    int cx = 0;
+    int cy = 0;
     if (player_get_position(eng->player, &cx, &cy) != OK) return INTERNAL_ERROR;
 
     return handle_portal(eng, r, cx, cy);
