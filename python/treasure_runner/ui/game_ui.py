@@ -450,14 +450,13 @@ class GameUI:
                          wall_color: int, neighbours: list,
                          portal_index: int) -> int:
         """Render one line of the room grid. Returns updated portal_index."""
-        grid_max_col = 48
         for j, char in enumerate(line):
-            if j >= grid_max_col - 1:
+            if j >= 47:
                 break
-            attr = self._char_attr(char, wall_color, neighbours, portal_index)
+            self._safe_addstr(stdscr, screen_row, j, char,
+                              self._char_attr(char, wall_color, neighbours, portal_index))
             if char in ("X", "x"):
                 portal_index += 1
-            self._safe_addstr(stdscr, screen_row, j, char, attr)
         return portal_index
 
     def _draw_grid(self, stdscr) -> None:
@@ -581,23 +580,22 @@ class GameUI:
                           slot: dict, map_row: int, map_col: int,
                           screen_row: int, screen_col: int, label: str) -> None:
         """Draw horizontal edge to the right neighbour if on the same map row."""
-        if map_col >= self.MAP_ROOMS_PER_ROW - 1:
+        idx = sorted_ids.index(rid)
+        if map_col >= self.MAP_ROOMS_PER_ROW - 1 or idx + 1 >= len(sorted_ids):
             return
-        if sorted_ids.index(rid) + 1 >= len(sorted_ids):
+        if slot[sorted_ids[idx + 1]][0] != map_row:
             return
-        if slot[sorted_ids[sorted_ids.index(rid) + 1]][0] != map_row:
-            return
-        self._safe_addstr(
-            stdscr, screen_row, screen_col + len(label),
-            "-" if sorted_ids[sorted_ids.index(rid) + 1] in self._adj.get(rid, set()) else " ",
-            self._color(CP_MAP_EDGE))
+        edge = "-" if sorted_ids[idx + 1] in self._adj.get(rid, set()) else " "
+        self._safe_addstr(stdscr, screen_row, screen_col + len(label), edge,
+                          self._color(CP_MAP_EDGE))
 
     def _draw_vert_edges(self, stdscr, rid: int, slot: dict,
                          map_row: int, map_col: int,
                          screen_row: int, screen_col: int) -> None:
         """Draw vertical edges to neighbours in the row below."""
         for nid in self._adj.get(rid, set()):
-            if slot[nid] == (map_row + 1, map_col):
+            nmap_row, nmap_col = slot[nid]
+            if nmap_row == map_row + 1 and nmap_col == map_col:
                 self._safe_addstr(stdscr, screen_row + 1, screen_col + 1, "|",
                                   self._color(CP_MAP_EDGE))
 
@@ -833,5 +831,4 @@ def prompt_player_name(stdscr) -> str:
     curses.curs_set(0)
 
     return name_bytes.decode("utf-8").strip() or "Player"
-
     
