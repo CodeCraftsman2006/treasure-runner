@@ -50,7 +50,7 @@ class GameEngine:
         """
         status = lib.game_engine_try_portal(self._eng)
         if status != Status.OK:
-            raise status_to_exception(status, f"Failed to move player")
+            raise status_to_exception(status, "Failed to move player")
 
 
     def render_current_room(self) -> str:
