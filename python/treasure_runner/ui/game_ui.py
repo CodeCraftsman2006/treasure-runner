@@ -446,18 +446,18 @@ class GameUI:
             return self._color(portal_color, bold=True)
         return self._color(CP_FLOOR)
 
-    def _draw_grid_line(self, stdscr, line: str, screen_row: int,
-                         wall_color: int, neighbours: list,
-                         portal_index: int) -> int:
-        """Render one line of the room grid. Returns updated portal_index."""
-        for j, char in enumerate(line):
-            if j >= 47:
-                break
-            self._safe_addstr(stdscr, screen_row, j, char,
-                              self._char_attr(char, wall_color, neighbours, portal_index))
-            if char in ("X", "x"):
-                portal_index += 1
-        return portal_index
+    #def _draw_grid_line(self, stdscr, line: str, screen_row: int,
+    #                     wall_color: int, neighbours: list,
+    #                     portal_index: int) -> int:
+    #    """Render one line of the room grid. Returns updated portal_index."""
+    #    for j, char in enumerate(line):
+    #        if j >= 47:
+    #            break
+    #        self._safe_addstr(stdscr, screen_row, j, char,
+    #                          self._char_attr(char, wall_color, neighbours, portal_index))
+    #        if char in ("X", "x"):
+    #            portal_index += 1
+    #    return portal_index
 
     def _draw_grid(self, stdscr) -> None:
         """Render the current room with per-character colouring."""
@@ -831,4 +831,3 @@ def prompt_player_name(stdscr) -> str:
     curses.curs_set(0)
 
     return name_bytes.decode("utf-8").strip() or "Player"
-    
