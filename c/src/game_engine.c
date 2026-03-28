@@ -367,10 +367,12 @@ Status game_engine_move_player(GameEngine *eng, Direction dir) {
         return ROOM_IMPASSABLE;
     }
 
+    /*
     int dest = room_get_portal_destination(r, new_x, new_y);
     if (dest != -1) {
         return handle_portal(eng, r, new_x, new_y);
     }
+    */
 
     return player_set_position(eng->player, new_x, new_y);
 }
@@ -405,4 +407,17 @@ Status game_engine_reset(GameEngine *eng) {
         }
     }
     return OK;
+}
+
+// Python-friendly wrapper: move through a portal if on one
+Status game_engine_try_portal(GameEngine *eng) {
+    if (!eng || !eng->player) return INVALID_ARGUMENT;
+
+    Room *r = get_player_room(eng);
+    if (!r) return INTERNAL_ERROR;
+
+    int cx = 0, cy = 0;
+    if (player_get_position(eng->player, &cx, &cy) != OK) return INTERNAL_ERROR;
+
+    return handle_portal(eng, r, cx, cy);
 }
