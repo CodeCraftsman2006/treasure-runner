@@ -41,7 +41,6 @@ class GameEngine:
         status = lib.game_engine_move_player(self._eng, direction)
         if status != Status.OK:
             raise status_to_exception(status, f"Failed to move player {direction}")
-    
     #make another called handle portal
 
     def game_engine_try_portal(self) -> None:
@@ -51,7 +50,7 @@ class GameEngine:
         """
         status = lib.game_engine_try_portal(self._eng)
         if status != Status.OK:
-            raise status_to_exception(status, f"Failed to move player {direction}")
+            raise status_to_exception(status, f"Failed to move player")
 
 
     def render_current_room(self) -> str:
