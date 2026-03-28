@@ -140,7 +140,7 @@ class GameUI:
         try:
             self._engine.reset()
             self._room_ids = self._engine.get_room_ids()
-            n = len(self._room_ids)
+            num_rooms = len(self._room_ids)
 
             self._adj = {rid: set() for rid in self._room_ids}
             self._room_has_treasure = {rid: False for rid in self._room_ids}
@@ -161,8 +161,8 @@ class GameUI:
             visit_current()
 
             # BFS-style walk until all rooms discovered
-            for _ in range(n * 100):
-                if len(visited) == n:
+            for _ in range(num_rooms * 100):
+                if len(visited) == num_rooms:
                     break
                 current = self._engine.player.get_room()
 
@@ -400,7 +400,7 @@ class GameUI:
         self._visited_rooms.add(self._engine.player.get_room())
 
         self._draw_header(stdscr, cols)
-        self._draw_grid(stdscr, rows, cols)
+        self._draw_grid(stdscr)
         self._draw_right_panel(stdscr, rows, cols)
         self._draw_statusbar(
             stdscr, rows, cols,
@@ -445,9 +445,10 @@ class GameUI:
             return self._color(portal_color, bold=True)
         return self._color(CP_FLOOR)
 
-    def _draw_grid(self, stdscr, rows: int, cols: int) -> None:
+    def _draw_grid(self, stdscr) -> None:
         """Render the current room with per-character colouring."""
         grid_max_col = 48
+        terminal_rows, _ = stdscr.getmaxyx()
 
         # Pre-compute room-level values once, outside the character loop
         room_str = self._engine.render_current_room()
@@ -457,7 +458,7 @@ class GameUI:
         portal_index = 0
 
         for i, line in enumerate(room_str.split("\n")):
-            if i >= rows - 5:
+            if i >= terminal_rows - 5:
                 break
             screen_row = 2 + i
             for j, char in enumerate(line):
@@ -478,10 +479,26 @@ class GameUI:
     MAP_TOP_ROW       = 14
 
     def _draw_right_panel(self, stdscr, rows: int, cols: int) -> None:
-        if cols <= self.PANEL_COL + 22:
+        _, terminal_cols = stdscr.getmaxyx()
+        if terminal_cols <= self.PANEL_COL + 22:
             return
         self._draw_legend(stdscr)
-        self._draw_minimap(stdscr, cols)
+        self._draw_minimap(stdscr, terminal_cols)
+
+    def _draw_legend_portal_entries(self, stdscr, room_id: int,
+                                     start_row: int) -> int:
+        """Draw one legend entry per portal destination. Returns next free row."""
+        col = self.PANEL_COL
+        row = start_row
+        for neighbour in sorted(self._adj.get(room_id, [])):
+            portal_color = 20 + (neighbour % 4)
+            self._safe_addstr(stdscr, row, col, "x",
+                              self._color(portal_color, bold=True))
+            self._safe_addstr(stdscr, row, col + 1,
+                              f" portal to room {neighbour + 1}",
+                              self._color(CP_FLOOR))
+            row += 1
+        return row
 
     def _draw_legend_elements(self, stdscr, start_row: int) -> int:
         """Draw the tile-type legend entries. Returns the next free row."""
@@ -500,17 +517,7 @@ class GameUI:
             self._safe_addstr(stdscr, row, col + 1, label,  self._color(CP_FLOOR))
             row += 1
 
-        # One entry per portal destination from adjacency map
-        neighbours = sorted(self._adj.get(room_id, []))
-        for neighbour in neighbours:
-            portal_color = 20 + (neighbour % 4)
-            self._safe_addstr(stdscr, row, col,     "x",
-                            self._color(portal_color, bold=True))
-            self._safe_addstr(stdscr, row, col + 1, f" portal to room {neighbour + 1}",
-                            self._color(CP_FLOOR))
-            row += 1
-
-        return row
+        return self._draw_legend_portal_entries(stdscr, room_id, row)
 
     def _draw_legend_map_key(self, stdscr, start_row: int) -> None:
         """Draw the minimap colour-key entries."""
@@ -566,14 +573,13 @@ class GameUI:
                               self._color(CP_GOLD, bold=True))
         return label
 
-    def _draw_minimap_edges(self, stdscr, rid: int, sorted_ids: list,
-                            slot: dict, map_row: int, map_col: int,
-                            screen_row: int, screen_col: int, label: str) -> None:
-        """Draw horizontal and vertical edges for one minimap node."""
+    def _draw_minimap_horiz_edge(self, stdscr, rid: int, sorted_ids: list,
+                                  slot: dict, map_row: int, map_col: int,
+                                  screen_row: int, screen_col: int,
+                                  label: str) -> None:
+        """Draw horizontal edge to the right neighbour if on the same map row."""
         num_rooms = len(sorted_ids)
         idx = sorted_ids.index(rid)
-
-        #  Horizontal edge to the right neighbour (same map row)
         if map_col < self.MAP_ROOMS_PER_ROW - 1 and idx + 1 < num_rooms:
             right_rid = sorted_ids[idx + 1]
             right_map_row, _ = slot[right_rid]
@@ -582,6 +588,15 @@ class GameUI:
                 self._safe_addstr(stdscr, screen_row,
                                   screen_col + len(label), edge,
                                   self._color(CP_MAP_EDGE))
+
+    def _draw_minimap_edges(self, stdscr, rid: int, sorted_ids: list,
+                            slot: dict, map_row: int, map_col: int,
+                            screen_row: int, screen_col: int, label: str) -> None:
+        """Draw horizontal and vertical edges for one minimap node."""
+        self._draw_minimap_horiz_edge(
+            stdscr, rid, sorted_ids, slot,
+            map_row, map_col, screen_row, screen_col, label
+        )
 
         #  Vertical edge to neighbour in the row below
         for nid in self._adj.get(rid, set()):
@@ -770,8 +785,8 @@ class GameUI:
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         try:
-            with open(self._profile_path, "w", encoding="utf-8") as f:
-                json.dump(self._profile, f, indent=2)
+            with open(self._profile_path, "w", encoding="utf-8") as profile_file:
+                json.dump(self._profile, profile_file, indent=2)
         except OSError:
             pass
 
