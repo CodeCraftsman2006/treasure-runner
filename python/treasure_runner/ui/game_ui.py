@@ -450,13 +450,14 @@ class GameUI:
                          wall_color: int, neighbours: list,
                          portal_index: int) -> int:
         """Render one line of the room grid. Returns updated portal_index."""
+        grid_max_col = 48
         for j, char in enumerate(line):
-            if j >= 47:
+            if j >= grid_max_col - 1:
                 break
-            self._safe_addstr(stdscr, screen_row, j, char,
-                              self._char_attr(char, wall_color, neighbours, portal_index))
+            attr = self._char_attr(char, wall_color, neighbours, portal_index)
             if char in ("X", "x"):
                 portal_index += 1
+            self._safe_addstr(stdscr, screen_row, j, char, attr)
         return portal_index
 
     def _draw_grid(self, stdscr) -> None:
@@ -578,36 +579,38 @@ class GameUI:
 
     def _draw_horiz_edge(self, stdscr, rid: int, sorted_ids: list,
                           slot: dict, map_row: int, map_col: int,
-                          screen_pos: tuple, label: str) -> None:
+                          screen_row: int, screen_col: int, label: str) -> None:
         """Draw horizontal edge to the right neighbour if on the same map row."""
         if map_col >= self.MAP_ROOMS_PER_ROW - 1:
             return
-        next_idx = sorted_ids.index(rid) + 1
-        if next_idx >= len(sorted_ids) or slot[sorted_ids[next_idx]][0] != map_row:
+        if sorted_ids.index(rid) + 1 >= len(sorted_ids):
             return
-        edge = "-" if sorted_ids[next_idx] in self._adj.get(rid, set()) else " "
-        self._safe_addstr(stdscr, screen_pos[0], screen_pos[1] + len(label), edge,
-                          self._color(CP_MAP_EDGE))
+        if slot[sorted_ids[sorted_ids.index(rid) + 1]][0] != map_row:
+            return
+        self._safe_addstr(
+            stdscr, screen_row, screen_col + len(label),
+            "-" if sorted_ids[sorted_ids.index(rid) + 1] in self._adj.get(rid, set()) else " ",
+            self._color(CP_MAP_EDGE))
 
     def _draw_vert_edges(self, stdscr, rid: int, slot: dict,
                          map_row: int, map_col: int,
-                         screen_pos: tuple) -> None:
+                         screen_row: int, screen_col: int) -> None:
         """Draw vertical edges to neighbours in the row below."""
         for nid in self._adj.get(rid, set()):
             if slot[nid] == (map_row + 1, map_col):
-                self._safe_addstr(stdscr, screen_pos[0] + 1, screen_pos[1] + 1, "|",
+                self._safe_addstr(stdscr, screen_row + 1, screen_col + 1, "|",
                                   self._color(CP_MAP_EDGE))
 
     def _draw_minimap_edges(self, stdscr, rid: int, sorted_ids: list,
                             slot: dict, map_row: int, map_col: int,
                             screen_row: int, screen_col: int, label: str) -> None:
         """Draw horizontal and vertical edges for one minimap node."""
-        screen_pos = (screen_row, screen_col)
         self._draw_horiz_edge(
-            stdscr, rid, sorted_ids, slot, map_row, map_col, screen_pos, label
+            stdscr, rid, sorted_ids, slot,
+            map_row, map_col, screen_row, screen_col, label
         )
         self._draw_vert_edges(
-            stdscr, rid, slot, map_row, map_col, screen_pos
+            stdscr, rid, slot, map_row, map_col, screen_row, screen_col
         )
 
     def _draw_minimap_room(self, stdscr, rid: int, current_room: int,
