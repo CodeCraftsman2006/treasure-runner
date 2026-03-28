@@ -16,6 +16,7 @@ from time import time
 from ..models.exceptions import ImpassableError, GameEngineError
 from ..bindings import Direction
 
+
 #minimum termal reqirements
 MIN_ROWS = 24
 MIN_COLS = 80
@@ -71,6 +72,7 @@ class TerminalTooSmallError(Exception):
 class GameUI:
     """Curses view for Treasure Run."""
 
+
     # ------------------
     # Treasure tracking
     # ------------------
@@ -87,6 +89,7 @@ class GameUI:
     # -------------
     # Construction
     # -----------------------------------------
+
 
     def __init__(self, engine, profile: dict, profile_path: str):
         self._engine = engine
@@ -124,7 +127,6 @@ class GameUI:
             self._engine.reset()
         except (AttributeError, GameEngineError):
             pass
-
     def _explore_world(self) -> int:
         """
         Walk every reachable room once to:
@@ -132,7 +134,7 @@ class GameUI:
           - Build an adjacency matrix (dict of sets) for the minimap.
           - Record which rooms contain treasure.
         Resets the engine before AND after so the player starts fresh.
-        Returns the total treasure count (raw $ count + 1 for 0-based IDs).
+        Returns the total treasure count.
         """
         total_gold = 0
         try:
@@ -159,28 +161,41 @@ class GameUI:
             visit_current()
 
             # BFS-style walk until all rooms discovered
-            for _ in range(n * 4):
+            for _ in range(n * 100):
                 if len(visited) == n:
                     break
                 current = self._engine.player.get_room()
+
                 for direction in (Direction.NORTH, Direction.SOUTH,
                                   Direction.EAST, Direction.WEST):
                     if not self._try_move(direction):
                         continue
                     neighbour = self._engine.player.get_room()
                     if neighbour != current:
-                        # Record bidirectional edge
                         self._adj[current].add(neighbour)
                         self._adj[neighbour].add(current)
                         visit_current()
-                        break   # stay in new room to explore further
+
+                # also try portal repeatedly to reach all connected rooms
+                for _ in range(10):
+                    try:
+                        current = self._engine.player.get_room()
+                        self._engine.game_engine_try_portal()
+                        neighbour = self._engine.player.get_room()
+                        if neighbour != current:
+                            self._adj[current].add(neighbour)
+                            self._adj[neighbour].add(current)
+                            visit_current()
+                    except (ImpassableError, GameEngineError):
+                        pass
 
         except (AttributeError, GameEngineError):
             total_gold = 0
         finally:
             self._reset_engine_safe()
 
-        return total_gold + 1 if total_gold > 0 else 0
+        total_gold= total_gold+1
+        return total_gold
 
     # ---------------------------------------------
     # Curses entry point
@@ -318,9 +333,9 @@ class GameUI:
                 self._message = "Game reset to beginning."
                 continue
 
-            #if key == ord(">"):
-            #    self._handle_portal()
-            #    continue
+            if key == ord(">"):
+                self._handle_portal()
+                continue
 
             direction = KEY_MAP.get(key)
             if direction is not None:
@@ -357,7 +372,7 @@ class GameUI:
         for direction in (Direction.NORTH, Direction.SOUTH,
                           Direction.EAST, Direction.WEST):
             try:
-                self._engine.move_player(direction)
+                self._engine.game_engine_try_portal()
                 self._steps += 1
                 after_room = self._engine.player.get_room()
                 self._visited_rooms.add(after_room)
@@ -473,20 +488,28 @@ class GameUI:
         col = self.PANEL_COL
         row = start_row
         room_id = self._engine.player.get_room()
-        next_room = (room_id + 1) % 4
 
-        entries = [
-            ("@", " player",                  CP_PLAYER),
+        # Static entries
+        static_entries = [
+            ("@", " player",                   CP_PLAYER),
             ("#", f" room {room_id + 1} wall", 20 + (room_id % 4)),
-            ("$", " gold",                    CP_GOLD),
-            ("x", f" to room {next_room + 1}", 20 + next_room),
+            ("$", " gold",                     CP_GOLD),
         ]
-        for symbol, label, pair in entries:
-            self._safe_addstr(stdscr, row, col,     symbol,
-                              self._color(pair, bold=True))
-            self._safe_addstr(stdscr, row, col + 1, label,
-                              self._color(CP_FLOOR))
+        for symbol, label, pair in static_entries:
+            self._safe_addstr(stdscr, row, col,     symbol, self._color(pair, bold=True))
+            self._safe_addstr(stdscr, row, col + 1, label,  self._color(CP_FLOOR))
             row += 1
+
+        # One entry per portal destination from adjacency map
+        neighbours = sorted(self._adj.get(room_id, []))
+        for neighbour in neighbours:
+            portal_color = 20 + (neighbour % 4)
+            self._safe_addstr(stdscr, row, col,     "x",
+                            self._color(portal_color, bold=True))
+            self._safe_addstr(stdscr, row, col + 1, f" portal to room {neighbour + 1}",
+                            self._color(CP_FLOOR))
+            row += 1
+
         return row
 
     def _draw_legend_map_key(self, stdscr, start_row: int) -> None:

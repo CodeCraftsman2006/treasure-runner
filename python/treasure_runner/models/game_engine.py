@@ -41,6 +41,18 @@ class GameEngine:
         status = lib.game_engine_move_player(self._eng, direction)
         if status != Status.OK:
             raise status_to_exception(status, f"Failed to move player {direction}")
+    
+    #make another called handle portal
+
+    def game_engine_try_portal(self) -> None:
+        """
+        Attempt to use a portal at the player's current position.
+        Returns a Status code.
+        """
+        status = lib.game_engine_try_portal(self._eng)
+        if status != Status.OK:
+            raise status_to_exception(status, f"Failed to move player {direction}")
+
 
     def render_current_room(self) -> str:
         """Render current room as string."""

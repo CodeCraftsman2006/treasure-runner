@@ -191,3 +191,7 @@ lib.game_engine_get_room_ids.restype = ctypes.c_int
 
 lib.game_engine_free_string.argtypes = [ctypes.c_void_p]
 lib.game_engine_free_string.restype = None
+
+# game_engine_try_portal
+lib.game_engine_try_portal.argtypes = [GameEngine]
+lib.game_engine_try_portal.restype = ctypes.c_int
