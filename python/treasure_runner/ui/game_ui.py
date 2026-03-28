@@ -402,7 +402,7 @@ class GameUI:
 
         self._draw_header(stdscr, cols)
         self._draw_grid(stdscr)
-        self._draw_right_panel(stdscr, rows, cols)
+        self._draw_right_panel(stdscr)
         self._draw_statusbar(
             stdscr, rows, cols,
             self._engine.player.get_room(),
@@ -446,11 +446,23 @@ class GameUI:
             return self._color(portal_color, bold=True)
         return self._color(CP_FLOOR)
 
+    def _draw_grid_line(self, stdscr, line: str, screen_row: int,
+                         wall_color: int, neighbours: list,
+                         portal_index: int) -> int:
+        """Render one line of the room grid. Returns updated portal_index."""
+        grid_max_col = 48
+        for j, char in enumerate(line):
+            if j >= grid_max_col - 1:
+                break
+            attr = self._char_attr(char, wall_color, neighbours, portal_index)
+            if char in ("X", "x"):
+                portal_index += 1
+            self._safe_addstr(stdscr, screen_row, j, char, attr)
+        return portal_index
+
     def _draw_grid(self, stdscr) -> None:
         """Render the current room with per-character colouring."""
-        grid_max_col = 48
         max_rows, _ = stdscr.getmaxyx()
-
         room_str = self._engine.render_current_room()
         room_id = self._engine.player.get_room()
         neighbours = list(self._adj.get(room_id, []))
@@ -460,14 +472,9 @@ class GameUI:
         for i, line in enumerate(room_str.split("\n")):
             if i >= max_rows - 5:
                 break
-            screen_row = 2 + i
-            for j, char in enumerate(line):
-                if j >= grid_max_col - 1:
-                    break
-                attr = self._char_attr(char, wall_color, neighbours, portal_index)
-                if char in ("X", "x"):
-                    portal_index += 1
-                self._safe_addstr(stdscr, screen_row, j, char, attr)
+            portal_index = self._draw_grid_line(
+                stdscr, line, 2 + i, wall_color, neighbours, portal_index
+            )
 
     # ----------------------------------
     # Right panel  (legend + minimap)
@@ -478,21 +485,33 @@ class GameUI:
     MAP_NODE_WIDTH    = 5   # "[NN]" + 1 gap
     MAP_TOP_ROW       = 14
 
-    def _draw_right_panel(self, stdscr, rows: int, cols: int) -> None:
-        # rows is passed by caller; cols used for panel width check
-        _ = rows
-        if cols <= self.PANEL_COL + 22:
+    def _draw_right_panel(self, stdscr) -> None:
+        """Draw the legend and minimap if the terminal is wide enough."""
+        _, term_cols = stdscr.getmaxyx()
+        if term_cols <= self.PANEL_COL + 22:
             return
         self._draw_legend(stdscr)
-        self._draw_minimap(stdscr, cols)
+        self._draw_minimap(stdscr, term_cols)
+
+    def _draw_portal_entries(self, stdscr, room_id: int, start_row: int) -> int:
+        """Draw one legend entry per portal destination. Returns next free row."""
+        col = self.PANEL_COL
+        row = start_row
+        for neighbour in sorted(self._adj.get(room_id, [])):
+            portal_color = 20 + (neighbour % 4)
+            self._safe_addstr(stdscr, row, col, "x",
+                              self._color(portal_color, bold=True))
+            self._safe_addstr(stdscr, row, col + 1,
+                              f" portal to room {neighbour + 1}",
+                              self._color(CP_FLOOR))
+            row += 1
+        return row
 
     def _draw_legend_elements(self, stdscr, start_row: int) -> int:
         """Draw the tile-type legend entries. Returns the next free row."""
         col = self.PANEL_COL
         row = start_row
         room_id = self._engine.player.get_room()
-
-        # Static entries
         static_entries = [
             ("@", " player",                   CP_PLAYER),
             ("#", f" room {room_id + 1} wall", 20 + (room_id % 4)),
@@ -502,18 +521,7 @@ class GameUI:
             self._safe_addstr(stdscr, row, col,     symbol, self._color(pair, bold=True))
             self._safe_addstr(stdscr, row, col + 1, label,  self._color(CP_FLOOR))
             row += 1
-
-        # One entry per portal destination from adjacency map
-        neighbours = sorted(self._adj.get(room_id, []))
-        for neighbour in neighbours:
-            portal_color = 20 + (neighbour % 4)
-            self._safe_addstr(stdscr, row, col,     "x",
-                            self._color(portal_color, bold=True))
-            self._safe_addstr(stdscr, row, col + 1, f" portal to room {neighbour + 1}",
-                            self._color(CP_FLOOR))
-            row += 1
-
-        return row
+        return self._draw_portal_entries(stdscr, room_id, row)
 
     def _draw_legend_map_key(self, stdscr, start_row: int) -> None:
         """Draw the minimap colour-key entries."""
@@ -574,13 +582,13 @@ class GameUI:
                           screen_row: int, screen_col: int, label: str) -> None:
         """Draw horizontal edge to the right neighbour if on the same map row."""
         idx = sorted_ids.index(rid)
-        if map_col < self.MAP_ROOMS_PER_ROW - 1 and idx + 1 < len(sorted_ids):
-            right_rid = sorted_ids[idx + 1]
-            if slot[right_rid][0] == map_row:
-                edge = "-" if right_rid in self._adj.get(rid, set()) else " "
-                self._safe_addstr(stdscr, screen_row,
-                                  screen_col + len(label), edge,
-                                  self._color(CP_MAP_EDGE))
+        if map_col >= self.MAP_ROOMS_PER_ROW - 1 or idx + 1 >= len(sorted_ids):
+            return
+        if slot[sorted_ids[idx + 1]][0] != map_row:
+            return
+        edge = "-" if sorted_ids[idx + 1] in self._adj.get(rid, set()) else " "
+        self._safe_addstr(stdscr, screen_row, screen_col + len(label), edge,
+                          self._color(CP_MAP_EDGE))
 
     def _draw_vert_edges(self, stdscr, rid: int, slot: dict,
                          map_row: int, map_col: int,
@@ -607,13 +615,12 @@ class GameUI:
     def _draw_minimap_room(self, stdscr, rid: int, current_room: int,
                             sorted_ids: list, slot: dict, map_left: int) -> None:
         """Draw one room node and its edges on the minimap."""
-        map_row, map_col = slot[rid]
-        screen_row = self.MAP_TOP_ROW + map_row * 2
-        screen_col = map_left + map_col * self.MAP_NODE_WIDTH
+        screen_row = self.MAP_TOP_ROW + slot[rid][0] * 2
+        screen_col = map_left + slot[rid][1] * self.MAP_NODE_WIDTH
         label = self._draw_minimap_node(stdscr, rid, current_room, screen_row, screen_col)
         self._draw_minimap_edges(
             stdscr, rid, sorted_ids, slot,
-            map_row, map_col, screen_row, screen_col, label
+            slot[rid][0], slot[rid][1], screen_row, screen_col, label
         )
 
     def _draw_minimap(self, stdscr, cols: int) -> None:
@@ -785,8 +792,8 @@ class GameUI:
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         try:
-            with open(self._profile_path, "w", encoding="utf-8") as f:
-                json.dump(self._profile, f, indent=2)
+            with open(self._profile_path, "w", encoding="utf-8") as profile_file:
+                json.dump(self._profile, profile_file, indent=2)
         except OSError:
             pass
 
