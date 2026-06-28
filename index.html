@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treasure Runner - Web Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #1a1a2e;
+            color: #eaeaea;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background: #16213e;
+            border: 3px solid #0f3460;
+            border-radius: 8px;
+            padding: 30px;
+            max-width: 900px;
+            width: 100%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #ffd700;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #0f3460;
+            margin-bottom: 30px;
+            font-size: 0.9em;
+        }
+
+        .game-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 250px;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .game-area {
+            background: #0f3460;
+            border: 2px solid #ffd700;
+            padding: 20px;
+            border-radius: 6px;
+        }
+
+        .game-board {
+            background: #000;
+            border: 1px solid #333;
+            padding: 15px;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            line-height: 1.2;
+            font-size: 14px;
+            color: #0f0;
+        }
+
+        .game-cell {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin: 1px;
+            background: #000;
+            border: 1px solid #111;
+            text-align: center;
+            line-height: 20px;
+            font-weight: bold;
+            position: relative;
+        }
+
+        .cell-wall {
+            background: #0066cc;
+            color: #0066cc;
+            border: 1px solid #0044aa;
+        }
+
+        .cell-player {
+            background: #ffdd00;
+            color: #ffdd00;
+            font-weight: bold;
+        }
+
+        .cell-treasure {
+            background: #ff9900;
+            color: #ff9900;
+            animation: blink 0.5s infinite;
+        }
+
+        .cell-portal {
+            background: #ff00ff;
+            color: #ff00ff;
+            animation: pulse 0.7s infinite;
+        }
+
+        .cell-empty {
+            background: #1a1a2e;
+            color: #1a1a2e;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .sidebar {
+            background: #0f3460;
+            border: 2px solid #ffd700;
+            padding: 20px;
+            border-radius: 6px;
+            height: fit-content;
+        }
+
+        .stat-group {
+            margin-bottom: 20px;
+        }
+
+        .stat-label {
+            color: #ffd700;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            color: #eaeaea;
+            font-size: 1.2em;
+            padding: 8px;
+            background: #1a1a2e;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .collected-treasures {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ffd700;
+        }
+
+        .treasure-item {
+            color: #ff9900;
+            font-size: 0.85em;
+            padding: 5px;
+            margin: 3px 0;
+            background: #1a1a2e;
+            border-radius: 3px;
+            border-left: 3px solid #ff9900;
+            padding-left: 8px;
+        }
+
+        .controls {
+            background: #0f3460;
+            border: 2px solid #ffd700;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .controls-title {
+            color: #ffd700;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .dpad-btn {
+            padding: 10px;
+            background: #1a1a2e;
+            border: 2px solid #ffd700;
+            color: #ffd700;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .dpad-btn:hover {
+            background: #ffd700;
+            color: #0f3460;
+        }
+
+        .dpad-btn:active {
+            transform: scale(0.95);
+        }
+
+        .dpad-placeholder {
+            background: transparent;
+            border: none;
+            cursor: default;
+        }
+
+        .dpad-placeholder:hover {
+            background: transparent;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            background: #1a1a2e;
+            border: 2px solid #ffd700;
+            color: #ffd700;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1em;
+        }
+
+        .btn:hover {
+            background: #ffd700;
+            color: #0f3460;
+            box-shadow: 0 4px 8px rgba(255, 215, 0, 0.3);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn.large {
+            grid-column: 1 / -1;
+        }
+
+        .message {
+            background: #1a1a2e;
+            border: 1px solid #ffd700;
+            color: #ffd700;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .message.success {
+            color: #00ff00;
+            border-color: #00ff00;
+        }
+
+        .message.error {
+            color: #ff6666;
+            border-color: #ff6666;
+        }
+
+        .keyboard-hint {
+            color: #888;
+            font-size: 0.8em;
+            margin-top: 15px;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        .room-info {
+            text-align: center;
+            color: #0f9;
+            font-size: 0.9em;
+            margin-top: 10px;
+            padding: 10px;
+            background: #1a1a2e;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .game-wrapper {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                height: auto;
+            }
+
+            .container {
+                padding: 15px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .game-board {
+                font-size: 12px;
+            }
+
+            .game-cell {
+                width: 16px;
+                height: 16px;
+                margin: 0;
+                line-height: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏴‍☠️ Treasure Runner</h1>
+        <p class="subtitle">A Classic Dungeon Adventure</p>
+
+        <div class="message" id="message">
+            Welcome! Collect all treasures and explore the dungeons. Use arrow keys or WASD to move.
+        </div>
+
+        <div class="controls">
+            <div class="controls-title">CONTROLS</div>
+            <div class="control-buttons">
+                <div class="dpad-placeholder"></div>
+                <button class="dpad-btn" onclick="movePlayer('up')">▲</button>
+                <div class="dpad-placeholder"></div>
+                <button class="dpad-btn" onclick="movePlayer('left')">◄</button>
+                <button class="dpad-btn" onclick="movePlayer('down')">▼</button>
+                <button class="dpad-btn" onclick="movePlayer('right')">►</button>
+            </div>
+            <div class="action-buttons">
+                <button class="btn" onclick="usePortal()">PORTAL (>)</button>
+                <button class="btn" onclick="resetGame()">RESET (R)</button>
+            </div>
+            <div class="keyboard-hint">
+                Arrow Keys / WASD: Move<br>
+                &gt; Key: Use Portal<br>
+                R Key: Reset Game
+            </div>
+        </div>
+
+        <div class="game-wrapper">
+            <div class="game-area">
+                <div class="game-board" id="gameBoard"></div>
+                <div class="room-info" id="roomInfo">Room 1 / 1</div>
+            </div>
+
+            <div class="sidebar">
+                <div class="stat-group">
+                    <div class="stat-label">TREASURES</div>
+                    <div class="stat-value" id="treasureCount">0/0</div>
+                </div>
+                <div class="stat-group">
+                    <div class="stat-label">POSITION</div>
+                    <div class="stat-value" id="position">0, 0</div>
+                </div>
+                <div class="stat-group">
+                    <div class="stat-label">MOVES</div>
+                    <div class="stat-value" id="moveCount">0</div>
+                </div>
+                <div class="collected-treasures">
+                    <div class="stat-label">COLLECTED:</div>
+                    <div id="collectedList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Game Constants
+        const WALL = '#';
+        const PLAYER = '@';
+        const TREASURE = '$';
+        const PORTAL = '>';
+        const EMPTY = '.';
+
+        // Game State
+        let gameState = {
+            rooms: [],
+            currentRoom: 0,
+            playerX: 0,
+            playerY: 0,
+            treasures: [],
+            collectedTreasures: [],
+            moveCount: 0,
+            roomWidth: 0,
+            roomHeight: 0
+        };
+
+        // Initialize Game
+        function initGame() {
+            generateWorld();
+            render();
+            addEventListeners();
+        }
+
+        // Generate Sample World
+        function generateWorld() {
+            // Create a simple 3-room dungeon
+            const room1 = {
+                width: 20,
+                height: 10,
+                grid: generateRoom(20, 10, 1),
+                treasures: [
+                    { id: 1, name: 'Gold Coin', x: 5, y: 3 },
+                    { id: 2, name: 'Ruby Gem', x: 15, y: 6 }
+                ],
+                portals: [
+                    { x: 18, y: 4, targetRoom: 1 }
+                ]
+            };
+
+            const room2 = {
+                width: 25,
+                height: 12,
+                grid: generateRoom(25, 12, 2),
+                treasures: [
+                    { id: 3, name: 'Diamond', x: 10, y: 5 },
+                    { id: 4, name: 'Sapphire', x: 20, y: 8 }
+                ],
+                portals: [
+                    { x: 2, y: 4, targetRoom: 0 },
+                    { x: 23, y: 10, targetRoom: 2 }
+                ]
+            };
+
+            const room3 = {
+                width: 20,
+                height: 10,
+                grid: generateRoom(20, 10, 3),
+                treasures: [
+                    { id: 5, name: 'Crown', x: 10, y: 5 }
+                ],
+                portals: [
+                    { x: 2, y: 2, targetRoom: 1 }
+                ]
+            };
+
+            gameState.rooms = [room1, room2, room3];
+            gameState.currentRoom = 0;
+            gameState.playerX = 2;
+            gameState.playerY = 2;
+            gameState.roomWidth = room1.width;
+            gameState.roomHeight = room1.height;
+            gameState.treasures = [...room1.treasures, ...room2.treasures, ...room3.treasures];
+            gameState.collectedTreasures = [];
+            gameState.moveCount = 0;
+        }
+
+        // Generate Room Grid
+        function generateRoom(width, height, seed) {
+            const grid = [];
+            for (let y = 0; y < height; y++) {
+                const row = [];
+                for (let x = 0; x < width; x++) {
+                    // Create borders
+                    if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
+                        row.push(WALL);
+                    } else if (Math.random() < 0.08 + seed * 0.01) { // Pseudo-random walls
+                        row.push(WALL);
+                    } else {
+                        row.push(EMPTY);
+                    }
+                }
+                grid.push(row);
+            }
+            return grid;
+        }
+
+        // Render Game
+        function render() {
+            const room = gameState.rooms[gameState.currentRoom];
+            let boardHTML = '';
+
+            for (let y = 0; y < room.height; y++) {
+                for (let x = 0; x < room.width; x++) {
+                    let cellClass = 'game-cell cell-empty';
+                    let cellContent = EMPTY;
+
+                    // Check player
+                    if (gameState.playerX === x && gameState.playerY === y) {
+                        cellClass = 'game-cell cell-player';
+                        cellContent = PLAYER;
+                    }
+                    // Check treasures
+                    else if (room.treasures.some(t => t.x === x && t.y === y && !gameState.collectedTreasures.includes(t.id))) {
+                        cellClass = 'game-cell cell-treasure';
+                        cellContent = TREASURE;
+                    }
+                    // Check portals
+                    else if (room.portals.some(p => p.x === x && p.y === y)) {
+                        cellClass = 'game-cell cell-portal';
+                        cellContent = PORTAL;
+                    }
+                    // Check walls
+                    else if (room.grid[y][x] === WALL) {
+                        cellClass = 'game-cell cell-wall';
+                        cellContent = WALL;
+                    }
+
+                    boardHTML += `<div class="${cellClass}">${cellContent}</div>`;
+                }
+                boardHTML += '<br>';
+            }
+
+            document.getElementById('gameBoard').innerHTML = boardHTML;
+            updateUI();
+        }
+
+        // Update UI
+        function updateUI() {
+            const room = gameState.rooms[gameState.currentRoom];
+            document.getElementById('position').textContent = `${gameState.playerX}, ${gameState.playerY}`;
+            document.getElementById('moveCount').textContent = gameState.moveCount;
+            document.getElementById('treasureCount').textContent = `${gameState.collectedTreasures.length}/${gameState.treasures.length}`;
+            document.getElementById('roomInfo').textContent = `Room ${gameState.currentRoom + 1} / ${gameState.rooms.length}`;
+
+            // Update collected treasures list
+            const collectedList = document.getElementById('collectedList');
+            if (gameState.collectedTreasures.length === 0) {
+                collectedList.innerHTML = '<div style="color: #666; font-size: 0.85em;">None yet...</div>';
+            } else {
+                collectedList.innerHTML = gameState.collectedTreasures
+                    .map(tId => {
+                        const treasure = gameState.treasures.find(t => t.id === tId);
+                        return `<div class="treasure-item">✓ ${treasure.name}</div>`;
+                    })
+                    .join('');
+            }
+
+            // Check for treasures at player position
+            const treasure = room.treasures.find(t => t.x === gameState.playerX && t.y === gameState.playerY);
+            if (treasure && !gameState.collectedTreasures.includes(treasure.id)) {
+                gameState.collectedTreasures.push(treasure.id);
+                showMessage(`Collected: ${treasure.name}! ✨`, 'success');
+
+                // Check if all treasures collected
+                if (gameState.collectedTreasures.length === gameState.treasures.length) {
+                    showMessage(`🎉 YOU WIN! All treasures collected in ${gameState.moveCount} moves!`, 'success');
+                }
+            }
+        }
+
+        // Move Player
+        function movePlayer(direction) {
+            const room = gameState.rooms[gameState.currentRoom];
+            let newX = gameState.playerX;
+            let newY = gameState.playerY;
+
+            switch (direction) {
+                case 'up': newY = Math.max(0, newY - 1); break;
+                case 'down': newY = Math.min(room.height - 1, newY + 1); break;
+                case 'left': newX = Math.max(0, newX - 1); break;
+                case 'right': newX = Math.min(room.width - 1, newX + 1); break;
+            }
+
+            // Check if move is valid (not a wall)
+            if (room.grid[newY][newX] !== WALL) {
+                gameState.playerX = newX;
+                gameState.playerY = newY;
+                gameState.moveCount++;
+                render();
+            } else {
+                showMessage('You hit a wall! 💥', 'error');
+            }
+        }
+
+        // Use Portal
+        function usePortal() {
+            const room = gameState.rooms[gameState.currentRoom];
+            const portal = room.portals.find(p => p.x === gameState.playerX && p.y === gameState.playerY);
+
+            if (portal) {
+                gameState.currentRoom = portal.targetRoom;
+                const newRoom = gameState.rooms[gameState.currentRoom];
+                gameState.roomWidth = newRoom.width;
+                gameState.roomHeight = newRoom.height;
+                gameState.playerX = Math.floor(newRoom.width / 2);
+                gameState.playerY = Math.floor(newRoom.height / 2);
+                gameState.moveCount++;
+                showMessage(`Entered Room ${gameState.currentRoom + 1}! 🚪`, 'success');
+                render();
+            } else {
+                showMessage('No portal here! Stand on > to use.', 'error');
+            }
+        }
+
+        // Reset Game
+        function resetGame() {
+            gameState.moveCount = 0;
+            gameState.collectedTreasures = [];
+            gameState.currentRoom = 0;
+            gameState.playerX = 2;
+            gameState.playerY = 2;
+            showMessage('Game reset! Let\'s play again. 🎮', 'success');
+            render();
+        }
+
+        // Show Message
+        function showMessage(text, type = '') {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            msg.className = 'message ' + type;
+        }
+
+        // Keyboard Controls
+        function addEventListeners() {
+            document.addEventListener('keydown', (e) => {
+                switch (e.key.toLowerCase()) {
+                    case 'arrowup':
+                    case 'w':
+                        e.preventDefault();
+                        movePlayer('up');
+                        break;
+                    case 'arrowdown':
+                    case 's':
+                        e.preventDefault();
+                        movePlayer('down');
+                        break;
+                    case 'arrowleft':
+                    case 'a':
+                        e.preventDefault();
+                        movePlayer('left');
+                        break;
+                    case 'arrowright':
+                    case 'd':
+                        e.preventDefault();
+                        movePlayer('right');
+                        break;
+                    case '>':
+                    case '.':
+                        e.preventDefault();
+                        usePortal();
+                        break;
+                    case 'r':
+                        e.preventDefault();
+                        resetGame();
+                        break;
+                }
+            });
+        }
+
+        // Start the game
+        window.addEventListener('load', initGame);
+    </script>
+</body>
+</html>
