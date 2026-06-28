@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -404,19 +405,123 @@
             collectedTreasures: [],
             moveCount: 0,
             roomWidth: 0,
-            roomHeight: 0
+            roomHeight: 0,
+            playerName: ''
         };
+
+        let gameStarted = false;
 
         // Initialize Game
         function initGame() {
+            if (!gameStarted) {
+                showStartScreen();
+            }
+        }
+
+        // Show Start Screen
+        function showStartScreen() {
+            const container = document.querySelector('.container');
+            const html = `
+                <h1>🏴‍☠️ Treasure Runner</h1>
+                <p class="subtitle">A Classic Dungeon Adventure</p>
+                <div style="margin-top: 40px; padding: 30px; background: #0f3460; border: 2px solid #ffd700; border-radius: 6px; text-align: center;">
+                    <p style="color: #ffd700; margin-bottom: 20px; font-size: 1.1em;">Enter your name to begin your adventure!</p>
+                    <form onsubmit="startNewGame(event)" style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <input 
+                            type="text" 
+                            id="playerNameInput" 
+                            maxlength="20" 
+                            placeholder="Your adventurer name" 
+                            style="padding: 10px 15px; border: 2px solid #ffd700; border-radius: 4px; font-size: 1em; background: #1a1a2e; color: #ffd700;"
+                            autofocus
+                        />
+                        <button 
+                            type="submit" 
+                            style="padding: 10px 30px; background: #1a1a2e; border: 2px solid #ffd700; color: #ffd700; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 1em;"
+                        >
+                            START GAME
+                        </button>
+                    </form>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        // Start New Game
+        function startNewGame(event) {
+            event.preventDefault();
+            const nameInput = document.getElementById('playerNameInput');
+            gameState.playerName = nameInput.value.trim() || 'Adventurer';
+            gameStarted = true;
             generateWorld();
+            renderGameScreen();
             render();
             addEventListeners();
         }
 
+        // Render Game Screen
+        function renderGameScreen() {
+            const container = document.querySelector('.container');
+            container.innerHTML = `
+                <h1>🏴‍☠️ Treasure Runner</h1>
+                <p class="subtitle">${gameState.playerName}'s Adventure</p>
+
+                <div class="message" id="message">
+                    Welcome ${gameState.playerName}! Collect all treasures and explore the dungeons.
+                </div>
+
+                <div class="controls">
+                    <div class="controls-title">CONTROLS</div>
+                    <div class="control-buttons">
+                        <div class="dpad-placeholder"></div>
+                        <button class="dpad-btn" onclick="movePlayer('up')">▲</button>
+                        <div class="dpad-placeholder"></div>
+                        <button class="dpad-btn" onclick="movePlayer('left')">◄</button>
+                        <button class="dpad-btn" onclick="movePlayer('down')">▼</button>
+                        <button class="dpad-btn" onclick="movePlayer('right')">►</button>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="btn" onclick="usePortal()">PORTAL (>)</button>
+                        <button class="btn" onclick="resetGame()">RESET (R)</button>
+                    </div>
+                    <div class="keyboard-hint">
+                        Arrow Keys / WASD: Move<br>
+                        &gt; Key: Use Portal<br>
+                        R Key: Reset Game
+                    </div>
+                </div>
+
+                <div class="game-wrapper">
+                    <div class="game-area">
+                        <div class="game-board" id="gameBoard"></div>
+                        <div class="room-info" id="roomInfo">Room 1 / 1</div>
+                    </div>
+
+                    <div class="sidebar">
+                        <div class="stat-group">
+                            <div class="stat-label">TREASURES</div>
+                            <div class="stat-value" id="treasureCount">0/0</div>
+                        </div>
+                        <div class="stat-group">
+                            <div class="stat-label">POSITION</div>
+                            <div class="stat-value" id="position">0, 0</div>
+                        </div>
+                        <div class="stat-group">
+                            <div class="stat-label">MOVES</div>
+                            <div class="stat-value" id="moveCount">0</div>
+                        </div>
+                        <div class="collected-treasures">
+                            <div class="stat-label">COLLECTED:</div>
+                            <div id="collectedList"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
         // Generate Sample World
         function generateWorld() {
-            // Create a simple 3-room dungeon
+            // Create a simple 3-room dungeon with guaranteed clear floor at portal locations
             const room1 = {
                 width: 20,
                 height: 10,
@@ -456,7 +561,19 @@
                 ]
             };
 
-            gameState.rooms = [room1, room2, room3];
+            // Clear portal locations in grids to ensure they're passable
+            const clearPortalLocations = (room) => {
+                room.portals.forEach(portal => {
+                    room.grid[portal.y][portal.x] = EMPTY;
+                });
+                return room;
+            };
+
+            gameState.rooms = [
+                clearPortalLocations(room1),
+                clearPortalLocations(room2),
+                clearPortalLocations(room3)
+            ];
             gameState.currentRoom = 0;
             gameState.playerX = 2;
             gameState.playerY = 2;
@@ -607,13 +724,13 @@
 
         // Reset Game
         function resetGame() {
+            gameStarted = false;
             gameState.moveCount = 0;
             gameState.collectedTreasures = [];
             gameState.currentRoom = 0;
             gameState.playerX = 2;
             gameState.playerY = 2;
-            showMessage('Game reset! Let\'s play again. 🎮', 'success');
-            render();
+            showStartScreen();
         }
 
         // Show Message
