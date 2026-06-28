@@ -1,6 +1,5 @@
 
 
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -563,18 +562,21 @@
                 ]
             };
 
-            // Clear portal locations in grids to ensure they're passable
-            const clearPortalLocations = (room) => {
+            // Clear portal and treasure locations in grids to ensure they're passable
+            const clearLocations = (room) => {
                 room.portals.forEach(portal => {
                     room.grid[portal.y][portal.x] = EMPTY;
+                });
+                room.treasures.forEach(treasure => {
+                    room.grid[treasure.y][treasure.x] = EMPTY;
                 });
                 return room;
             };
 
             gameState.rooms = [
-                clearPortalLocations(room1),
-                clearPortalLocations(room2),
-                clearPortalLocations(room3)
+                clearLocations(room1),
+                clearLocations(room2),
+                clearLocations(room3)
             ];
             gameState.currentRoom = 0;
             gameState.playerX = 2;
