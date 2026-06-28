@@ -1,0 +1,437 @@
+:root {
+  --bg: #0f1419;
+  --bg-panel: #1a2332;
+  --bg-card: #243044;
+  --text: #e8eef7;
+  --muted: #94a3b8;
+  --accent: #fbbf24;
+  --accent-2: #38bdf8;
+  --success: #4ade80;
+  --danger: #f87171;
+  --wall-a: #2563eb;
+  --wall-b: #16a34a;
+  --wall-c: #9333ea;
+  --portal: #e879f9;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(251, 191, 36, 0.1), transparent 30%),
+    var(--bg);
+}
+
+#root,
+.app {
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.btn {
+  border: none;
+  border-radius: 12px;
+  padding: 0.85rem 1.25rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #111827;
+  font-weight: 700;
+}
+
+.btn.secondary {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+}
+
+.start-screen {
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.start-card {
+  width: min(100%, 520px);
+  padding: 2.5rem;
+  border-radius: 24px;
+  background: rgba(26, 35, 50, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow);
+}
+
+.start-card h1,
+.title-bar h1 {
+  margin: 0.4rem 0 0.8rem;
+  font-family: "Press Start 2P", monospace;
+  font-size: clamp(1.2rem, 3vw, 1.6rem);
+  line-height: 1.5;
+  color: var(--accent);
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+  color: var(--accent-2);
+}
+
+.subtitle,
+.hint {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.start-card form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.start-card label {
+  font-weight: 600;
+}
+
+.start-card input {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0b1220;
+  color: var(--text);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.game-screen {
+  padding: 1.25rem;
+}
+
+.game-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.player-tag {
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.hud {
+  margin-bottom: 1rem;
+  padding: 1rem 1.2rem;
+  border-radius: 16px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hud-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.stat strong {
+  color: var(--accent);
+}
+
+.message {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+}
+
+.play-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 1rem;
+}
+
+.board-wrap {
+  padding: 1rem;
+  border-radius: 20px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: auto;
+}
+
+.board {
+  display: inline-grid;
+  gap: 2px;
+  margin: 0 auto;
+}
+
+.loading-board {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.tile {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-family: "Press Start 2P", monospace;
+  font-size: 0.65rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tile:disabled {
+  cursor: default;
+}
+
+.tile.wall-a,
+.tile.wall-b,
+.tile.wall-c {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.2));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.06);
+}
+
+.tile.wall-a { background-color: color-mix(in srgb, var(--wall-a) 85%, black); }
+.tile.wall-b { background-color: color-mix(in srgb, var(--wall-b) 85%, black); }
+.tile.wall-c { background-color: color-mix(in srgb, var(--wall-c) 85%, black); }
+
+.tile.floor {
+  background: #111827;
+  color: #475569;
+}
+
+.tile.player {
+  background: radial-gradient(circle, #fde68a, #f59e0b);
+  color: #111827;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.45);
+}
+
+.tile.treasure {
+  background: #422006;
+  color: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.tile.portal {
+  background: #4a044e;
+  color: var(--portal);
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+.side-panel {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.minimap,
+.legend,
+.controls-help {
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.minimap h3,
+.legend h3,
+.controls-help h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.minimap-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.room-node {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.room-node.unvisited {
+  background: #334155;
+  color: #cbd5e1;
+}
+
+.room-node.visited {
+  background: rgba(56, 189, 248, 0.25);
+  color: var(--accent-2);
+}
+
+.room-node.current {
+  background: rgba(74, 222, 128, 0.25);
+  color: var(--success);
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.45);
+}
+
+.legend ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+}
+
+.chip {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.chip.wall { background: var(--wall-a); }
+.chip.floor { background: #111827; border: 1px solid #334155; }
+.chip.player { background: #f59e0b; }
+.chip.treasure { background: #422006; border: 1px solid var(--accent); }
+.chip.portal { background: #4a044e; border: 1px solid var(--portal); }
+
+.controls-help p {
+  margin: 0.35rem 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.touch-controls {
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.touch-controls h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.dpad {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+}
+
+.dpad-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.dpad-btn {
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 1.1rem;
+}
+
+.dpad-btn.portal-btn {
+  color: var(--portal);
+  font-weight: 700;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.72);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.modal {
+  width: min(100%, 420px);
+  padding: 2rem;
+  border-radius: 20px;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.modal h2 {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 900px) {
+  .play-area {
+    grid-template-columns: 1fr;
+  }
+
+  .side-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .side-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .tile {
+    width: 1.6rem;
+    height: 1.6rem;
+    font-size: 0.55rem;
+  }
+
+  .board {
+    grid-template-columns: repeat(auto-fit, 1.6rem) !important;
+  }
+}

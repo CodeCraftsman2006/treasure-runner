@@ -14,6 +14,7 @@ All error handling is done in the models layer.
 
 import ctypes
 import os
+import sys
 from enum import IntEnum
 from pathlib import Path
 
@@ -71,38 +72,83 @@ class Treasure(ctypes.Structure):
 # Library Loading
 # ============================================================
 
+def _library_names() -> tuple[str, str]:
+    """Return (backend_name, puzzlegen_name) for the current platform."""
+    if os.name == "nt":
+        return "libbackend.dll", "libpuzzlegen.dll"
+    if sys.platform == "darwin":
+        return "libbackend.dylib", "libpuzzlegen.dylib"
+    return "libbackend.so", "libpuzzlegen.so"
+
+
+def _configure_library_path(*directories: Path) -> None:
+    """Ensure the dynamic loader can resolve libpuzzlegen when loading libbackend."""
+    dirs = [str(d.resolve()) for d in directories if d.exists()]
+    if not dirs:
+        return
+
+    if os.name == "nt":
+        for directory in dirs:
+            if hasattr(os, "add_dll_directory"):
+                os.add_dll_directory(directory)
+    else:
+        existing = os.environ.get("LD_LIBRARY_PATH", "")
+        prefix = ":".join(dirs)
+        os.environ["LD_LIBRARY_PATH"] = f"{prefix}:{existing}" if existing else prefix
+
+
 def _find_library():
-    """Locate libbackend.so under the project dist directory."""
-    # Optional override via env
+    """Locate the compiled backend shared library under dist/ or c/lib/."""
+    backend_name, _puzzlegen_name = _library_names()
     env_path = os.getenv("TREASURE_RUNNER_DIST")
     candidates = []
 
-    if env_path:
-        candidates.append(Path(env_path) / "libbackend.so")
-        candidates.append(Path(env_path) / "libpuzzlegen.so")
-
-    # Project-relative: ../../dist relative to this file
     here = Path(__file__).resolve()
     repo_root = here.parent.parent.parent.parent
-    candidates.append(repo_root / "dist" / "libbackend.so")
-    candidates.append(repo_root / "dist" / "libpuzzlegen.so")
-    #candidates.append(repo_root / "c" / "lib" / "libbackend.so")
-    #candidates.append(repo_root / "c" / "lib" / "libpuzzlegen.so")
+
+    search_dirs = []
+    if env_path:
+        search_dirs.append(Path(env_path))
+    search_dirs.extend([
+        repo_root / "dist",
+        repo_root / "c" / "lib",
+    ])
+
+    for directory in search_dirs:
+        candidates.append(directory / backend_name)
+        candidates.append(directory / "libpuzzlegen.so")
+        candidates.append(directory / "libpuzzlegen.dll")
+        candidates.append(directory / "libpuzzlegen.dylib")
+        candidates.append(directory / "libpuzzlegen-linux-amd64.so")
+        candidates.append(directory / "libpuzzlegen-linux-arm64.so")
 
     found = {}
     for path in candidates:
         if path.exists():
             found[path.name] = path
 
-    if "libbackend.so" in found:
-        # Ensure puzzlegen is loaded first if present to satisfy dependencies.
-        puzzlegen = found.get("libpuzzlegen.so")
-        if puzzlegen:
-            ctypes.CDLL(str(puzzlegen))
-        return str(found["libbackend.so"])
+    backend_key = next(
+        (name for name in found if name.startswith("libbackend.")),
+        None,
+    )
+    if not backend_key:
+        tried = "\n".join(str(p) for p in candidates)
+        raise RuntimeError(f"{backend_name} not found. Paths tried:\n{tried}")
 
-    tried = "\n".join(str(p) for p in candidates)
-    raise RuntimeError(f"libbackend.so not found. Paths tried:\n{tried}")
+    backend_path = found[backend_key]
+    puzzlegen = next(
+        (path for name, path in found.items() if "puzzlegen" in name),
+        None,
+    )
+
+    dist_dir = repo_root / "dist"
+    _configure_library_path(dist_dir, backend_path.parent)
+
+    load_mode = getattr(ctypes, "RTLD_GLOBAL", os.RTLD_GLOBAL if hasattr(os, "RTLD_GLOBAL") else 0)
+    if puzzlegen:
+        ctypes.CDLL(str(puzzlegen.resolve()), mode=load_mode)
+
+    return str(backend_path.resolve())
 
 
 # Load the library
