@@ -25,15 +25,11 @@ jobs:
           mkdir -p deploy
           cp index.html deploy/index.html
       
-      - name: Remove old github-pages artifacts
-        uses: geekyeggo/delete-artifact@v2
-        with:
-          name: github-pages
-      
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './deploy'
+          overwrite: true
       
       - name: Deploy to GitHub Pages
         id: deployment
